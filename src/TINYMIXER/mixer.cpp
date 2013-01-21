@@ -356,7 +356,7 @@ static void mix(int32_t* buffer) {
 	}
 }
 
-void mymixer_getsamples(int16_t* samples, int nsamples) {
+void tinymixer_getsamples(int16_t* samples, int nsamples) {
 	
 	// was data leftover after the previous call to getsamples? Copy that out here
 	while (nsamples && g_mixer.samples_remaining) {

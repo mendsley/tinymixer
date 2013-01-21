@@ -34,7 +34,7 @@ typedef uint8_t tinymixer_loop;
 typedef void (*tinymixer_callback)(int32_t* samples, int nsamples, float gain);
 
 void tinymixer_init(int sample_rate, tinymixer_callback callback);
-void mymixer_getsamples(int16_t* samples, int nsamples);
+void tinymixer_getsamples(int16_t* samples, int nsamples);
 
 void tinymixer_create_buffer(int channels, const void* pcm_data, int pcm_data_size, const tinymixer_buffer** handle);
 void tinymixer_release_buffer(const tinymixer_buffer* handle);
