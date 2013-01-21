@@ -33,7 +33,7 @@
 #endif
 
 #ifndef tinymixer_abs
-#include <math.h>
+#include <stdlib.h>
 #define tinymixer_abs abs
 #endif
 
