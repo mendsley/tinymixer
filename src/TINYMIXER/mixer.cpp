@@ -87,6 +87,7 @@ static float c_speakerdist = 0.17677669529663688110021109052621f; // 1/(4 *sqrtf
 struct Mixer {
 	tinymixer_callback callback;
 	float position[3];
+	float gain_master;
 	float gain_base[c_ngaintypes];
 	float gain_callback;
 	int32_t sample_rate;
@@ -297,7 +298,7 @@ static void mix(int32_t* buffer) {
 	for (int ii = 0; ii < nplaying; ++ii) {
 		const Source* source = &g_mixer.sources[playing[ii]];
 
-		const float gain_base = g_mixer.gain_base[source->gain_base_index] * source->gain_base;
+		const float gain_base = g_mixer.gain_master * g_mixer.gain_base[source->gain_base_index] * source->gain_base;
 		gain[ii][0] = gain_base;
 		gain[ii][1] = gain_base;
 
@@ -387,6 +388,10 @@ void tinymixer_getsamples(int16_t* samples, int nsamples) {
 		samples += (2*samples_to_mix);
 		nsamples -= samples_to_mix;
 	}
+}
+
+void tinymixer_set_mastergain(float gain) {
+	g_mixer.gain_master = gain;
 }
 
 static Source* add(const tinymixer_buffer* handle, int gain_index, float gain) {
@@ -503,7 +508,7 @@ void tinymixer_loop_set_frequency(tinymixer_loop loop, float frequency) {
 
 	// clear frequency shift if ~0.0f
 	const float diff = frequency - 1.0f;
-	if (diff*diff < 1.0e8f) {
+	if (diff*diff < 1.0e-8f) {
 		source->flags &= ~SourceFlags::Frequency;
 	} else {
 		source->frequency = frequency;
@@ -512,6 +517,7 @@ void tinymixer_loop_set_frequency(tinymixer_loop loop, float frequency) {
 }
 
 void tinymixer_init(int sample_rate, tinymixer_callback callback) {
+	g_mixer.gain_master = 1.0f;
 	for (int ii = 0; ii < c_ngaintypes; ++ii)
 		g_mixer.gain_base[ii] = 1.0f;
 
