@@ -518,6 +518,7 @@ void tinymixer_loop_set_frequency(tinymixer_loop loop, float frequency) {
 
 void tinymixer_init(int sample_rate, tinymixer_callback callback) {
 	g_mixer.gain_master = 1.0f;
+	g_mixer.gain_callback = 1.0f;
 	for (int ii = 0; ii < c_ngaintypes; ++ii)
 		g_mixer.gain_base[ii] = 1.0f;
 
