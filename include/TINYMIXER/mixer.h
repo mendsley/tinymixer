@@ -57,4 +57,6 @@ void tinymixer_loop_fadeout(tinymixer_loop loop, float seconds);
 void tinymixer_loop_set_gain(tinymixer_loop loop, float gain);
 void tinymixer_loop_set_frequency(tinymixer_loop loop, float frequency);
 
+float tinymixer_loop_get_gain(tinymixer_loop loop);
+
 #endif

@@ -503,6 +503,11 @@ void tinymixer_loop_set_gain(tinymixer_loop loop, float gain) {
 	source->flags &= ~SourceFlags::FadeOut;
 }
 
+float tinymixer_loop_get_gain(tinymixer_loop loop) {
+	Source* source = &g_mixer.sources[loop - 1];
+	return source->gain_base;
+}
+
 void tinymixer_loop_set_frequency(tinymixer_loop loop, float frequency) {
 	Source* source = &g_mixer.sources[loop - 1];
 
@@ -518,7 +523,6 @@ void tinymixer_loop_set_frequency(tinymixer_loop loop, float frequency) {
 
 void tinymixer_init(int sample_rate, tinymixer_callback callback) {
 	g_mixer.gain_master = 1.0f;
-	g_mixer.gain_callback = 1.0f;
 	for (int ii = 0; ii < c_ngaintypes; ++ii)
 		g_mixer.gain_base[ii] = 1.0f;
 
