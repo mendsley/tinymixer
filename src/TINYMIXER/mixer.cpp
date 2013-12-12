@@ -444,6 +444,9 @@ void tinymixer_add(const tinymixer_buffer* handle, int gain_index, float gain, f
 				source->frequency = pitch;
 				source->flags |= SourceFlags::Frequency;
 			}
+		} else {
+			source->flags &= ~SourceFlags::Frequency;
+			source->frequency = 1.0f;
 		}
 		play(source);
 	}
@@ -461,6 +464,9 @@ void tinymixer_add(const tinymixer_buffer* handle, int gain_index, float gain, f
 				source->frequency = pitch;
 				source->flags |= SourceFlags::Frequency;
 			}
+		} else {
+			source->flags &= ~SourceFlags::Frequency;
+			source->frequency = 1.0f;
 		}
 		mixer_vcopy(source->position, position);
 		source->flags |= SourceFlags::Positional;
