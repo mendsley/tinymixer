@@ -48,8 +48,8 @@ void tinymixer_effects_compressor(const float thresholds[2], const float multipl
 void tinymixer_add(const tinymixer_buffer* handle, int gain_index, float gain, float pitch);
 void tinymixer_add(const tinymixer_buffer* handle, int gain_index, float gain, float pitch, const float* position, float distance_min, float distance_max);
 
-void tinymixer_add_loop(const tinymixer_buffer* handle, int gain_index, float gain, tinymixer_loop* loop);
-void tinymixer_add_loop(const tinymixer_buffer* handle, int gain_index, float gain,
+void tinymixer_add_loop(const tinymixer_buffer* handle, int gain_index, float gain, float pitch, tinymixer_loop* loop);
+void tinymixer_add_loop(const tinymixer_buffer* handle, int gain_index, float gain, float pitch,
 		const float* position, float distance_min, float distance_max, tinymixer_loop* loop);
 void tinymixer_remove_loop(tinymixer_loop loop);
 void tinymixer_loop_set_position(tinymixer_loop loop, const float* position);

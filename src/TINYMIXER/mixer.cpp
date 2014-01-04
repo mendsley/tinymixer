@@ -488,19 +488,47 @@ static Source* add_loop(const tinymixer_buffer* handle, int gain_index, float ga
 	return source;
 }
 
-void tinymixer_add_loop(const tinymixer_buffer* handle, int gain_index, float gain, tinymixer_loop* loop) {
+void tinymixer_add_loop(const tinymixer_buffer* handle, int gain_index, float gain, float pitch, tinymixer_loop* loop) {
 	Source* source = add_loop(handle, gain_index, gain, loop);
 	if (source)
+	{
+		if (pitch != 1.0f) {
+			// clear frequency shift if ~0.0f
+			const float diff = pitch - 1.0f;
+			if (diff*diff < 1.0e-8f) {
+				source->flags &= ~SourceFlags::Frequency;
+			} else {
+				source->frequency = pitch;
+				source->flags |= SourceFlags::Frequency;
+			}
+		} else {
+			source->flags &= ~SourceFlags::Frequency;
+			source->frequency = 1.0f;
+		}
 		play(source);
+	}
 }
 
-void tinymixer_add_loop(const tinymixer_buffer* handle, int gain_index, float gain, const float* position, float distance_min, float distance_max, tinymixer_loop* loop) {
+void tinymixer_add_loop(const tinymixer_buffer* handle, int gain_index, float gain, float pitch, const float* position, float distance_min, float distance_max, tinymixer_loop* loop) {
 	Source* source = add_loop(handle, gain_index, gain, loop);
 	if (source) {
 		mixer_vcopy(source->position, position);
 		source->flags |= SourceFlags::Positional;
 		source->distance_min = distance_min;
 		source->distance_difference = (distance_max - distance_min);
+		if (pitch != 1.0f) {
+			// clear frequency shift if ~0.0f
+			const float diff = pitch - 1.0f;
+			if (diff*diff < 1.0e-8f) {
+				source->flags &= ~SourceFlags::Frequency;
+			} else {
+				source->frequency = pitch;
+				source->flags |= SourceFlags::Frequency;
+			}
+		} else {
+			source->flags &= ~SourceFlags::Frequency;
+			source->frequency = 1.0f;
+		}
 		play(source);
 	}
 }
