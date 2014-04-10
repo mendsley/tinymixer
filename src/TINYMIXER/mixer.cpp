@@ -428,6 +428,11 @@ void tinymixer_create_buffer(int channels, const void* pcm_data, int pcm_data_si
 	*handle = (tinymixer_buffer*)buffer;
 }
 
+int tinymixer_get_buffer_size(const tinymixer_buffer* handle) {
+	const Buffer* buffer = (const Buffer*)handle;
+	return sizeof(Buffer)+sizeof(int16_t)*buffer->nchannels*buffer->nsamples;
+}
+
 void tinymixer_release_buffer(const tinymixer_buffer* handle) {
 	decref((Buffer*)handle);
 }
