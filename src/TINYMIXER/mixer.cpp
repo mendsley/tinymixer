@@ -144,6 +144,12 @@ static Source *find_source() {
 		}
 	}
 
+	if (NULL != best_source) {
+		if (best_source->buffer) {
+			decref((Buffer*)best_source->buffer);
+			best_source->buffer = NULL;
+		}
+	}
 	return best_source;
 }
 
@@ -618,4 +624,15 @@ void tinymixer_effects_compressor(const float thresholds[2], const float multipl
 	g_mixer.compressor_multipliers[1] = (int32_t)(c_quantize * mixer_clamp(multipliers[1], 0.0f, 1.0f));
 	g_mixer.compressor_attack_per1ksamples = (int32_t)(1000.0f * c_quantize / (attack_seconds * g_mixer.sample_rate));
 	g_mixer.compressor_release_per1ksamples = (int32_t)(1000.0f * c_quantize / (release_seconds * g_mixer.sample_rate));
+}
+
+void tinymixer_stop_all_sources() {
+	for (int ii = 0; ii < c_nsources; ++ii) {
+		Source* source = &g_mixer.sources[ii];
+		if (source->buffer) {
+			decref((Buffer*)source->buffer);
+			source->buffer = 0;
+			source->flags = 0;
+		}
+	}
 }
