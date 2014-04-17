@@ -418,7 +418,7 @@ static void play(Source* source) {
 	source->flags |= SourceFlags::Playing;
 }
 
-void tinymixer_create_buffer_s16le(int channels, const void* pcm_data, int pcm_data_size, const tinymixer_buffer** handle) {
+void tinymixer_create_buffer_s16le(int channels, const int16_t* pcm_data, int pcm_data_size, const tinymixer_buffer** handle) {
 	Buffer* buffer = (Buffer*)tinymixer_alloc(sizeof(Buffer) + pcm_data_size);
 	buffer->refcnt = 1;
 	buffer->nchannels = (uint8_t)channels;
@@ -430,6 +430,22 @@ void tinymixer_create_buffer_s16le(int channels, const void* pcm_data, int pcm_d
 	const int nsamples = pcm_data_size/sizeof(uint16_t);
 	for (int ii = 0; ii < nsamples; ++ii)
 		*dest++ = *source++;
+
+	*handle = (tinymixer_buffer*)buffer;
+}
+
+void tinymixer_create_buffer_float(int channels, const float* pcm_data, int pcm_data_size, const tinymixer_buffer** handle) {
+	Buffer* buffer = (Buffer*)tinymixer_alloc(sizeof(Buffer) + pcm_data_size);
+	buffer->refcnt = 1;
+	buffer->nchannels = (uint8_t)channels;
+	buffer->nsamples = pcm_data_size/sizeof(int16_t)/channels;
+
+	// copy samples
+	const float* source = (const float*)pcm_data;
+	int16_t* dest = (int16_t*)(buffer + 1);
+	const int nsamples = pcm_data_size/sizeof(float);
+	for (int ii = 0; ii < nsamples; ++ii)
+		*dest++ = (int16_t)(*source++ * (float)0x8000);
 
 	*handle = (tinymixer_buffer*)buffer;
 }
