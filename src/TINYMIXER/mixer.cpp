@@ -418,7 +418,7 @@ static void play(Source* source) {
 	source->flags |= SourceFlags::Playing;
 }
 
-void tinymixer_create_buffer(int channels, const void* pcm_data, int pcm_data_size, const tinymixer_buffer** handle) {
+void tinymixer_create_buffer_s16le(int channels, const void* pcm_data, int pcm_data_size, const tinymixer_buffer** handle) {
 	Buffer* buffer = (Buffer*)tinymixer_alloc(sizeof(Buffer) + pcm_data_size);
 	buffer->refcnt = 1;
 	buffer->nchannels = (uint8_t)channels;
