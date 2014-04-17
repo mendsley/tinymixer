@@ -438,7 +438,7 @@ void tinymixer_create_buffer_float(int channels, const float* pcm_data, int pcm_
 	Buffer* buffer = (Buffer*)tinymixer_alloc(sizeof(Buffer) + pcm_data_size);
 	buffer->refcnt = 1;
 	buffer->nchannels = (uint8_t)channels;
-	buffer->nsamples = pcm_data_size/sizeof(int16_t)/channels;
+	buffer->nsamples = pcm_data_size/sizeof(float)/channels;
 
 	// copy samples
 	const float* source = (const float*)pcm_data;
