@@ -159,7 +159,7 @@ static int32_t apply_gain(int16_t sample, int qgain) {
 	return (sample * qgain) / c_quantize;
 }
 
-static void apply_resample_mono_interleaved(int16_t* out, int nout, const int16_t* in, int qfreq) {
+static void apply_resample_mono(int16_t* out, int nout, const int16_t* in, int qfreq) {
 	for (int qpos = 0; nout; --nout, qpos += qfreq) {
 		const int qindex = qpos / c_quantize;
 		const int qinterp = qpos % c_quantize;
@@ -212,7 +212,7 @@ static void render(Source* source, int32_t* buffer, const int qgain[2]) {
 
 			// resample source into scratch space
 			if (nchannels == 1) {
-				apply_resample_mono_interleaved(g_mixer.scratch, samples_written, samples, qfreq);
+				apply_resample_mono(g_mixer.scratch, samples_written, samples, qfreq);
 			} else {
 				apply_resample_stereo_interleaved(g_mixer.scratch, samples_written, samples, qfreq);
 			}
