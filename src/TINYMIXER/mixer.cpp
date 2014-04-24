@@ -159,7 +159,7 @@ static int32_t apply_gain(int16_t sample, int qgain) {
 	return (sample * qgain) / c_quantize;
 }
 
-static void apply_resample_mono(int16_t* out, int nout, const int16_t* in, int qfreq) {
+static void apply_resample_mono_interleaved(int16_t* out, int nout, const int16_t* in, int qfreq) {
 	for (int qpos = 0; nout; --nout, qpos += qfreq) {
 		const int qindex = qpos / c_quantize;
 		const int qinterp = qpos % c_quantize;
@@ -168,7 +168,7 @@ static void apply_resample_mono(int16_t* out, int nout, const int16_t* in, int q
 	}
 }
 
-static void apply_resample_stereo(int16_t* out, int nout, const int16_t* in, int qfreq) {
+static void apply_resample_stereo_interleaved(int16_t* out, int nout, const int16_t* in, int qfreq) {
 	for (int qpos = 0; nout; --nout, qpos += qfreq) {
 		const int qindex = qpos / c_quantize;
 		const int qinterp = qpos % c_quantize;
@@ -183,6 +183,7 @@ static void render(Source* source, int32_t* buffer, const int qgain[2]) {
 	const int nchannels = source->buffer->nchannels;
 
 	int remaining = c_nsamples;
+	int offset = 0;
 	while (remaining) {
 		// handle looping audio
 		if (source->sample_pos == source->buffer->nsamples) {
@@ -211,35 +212,31 @@ static void render(Source* source, int32_t* buffer, const int qgain[2]) {
 
 			// resample source into scratch space
 			if (nchannels == 1) {
-				apply_resample_mono(g_mixer.scratch, samples_written, samples, qfreq);
+				apply_resample_mono_interleaved(g_mixer.scratch, samples_written, samples, qfreq);
 			} else {
-				apply_resample_stereo(g_mixer.scratch, samples_written, samples, qfreq);
+				apply_resample_stereo_interleaved(g_mixer.scratch, samples_written, samples, qfreq);
 			}
 
 			samples = g_mixer.scratch;
-
 		}
 
 		// render the source to the output mix
-		for (int ii = 0; ii < samples_written; ++ii) {
-			if (nchannels == 1) {
-				buffer[0] += apply_gain(samples[ii], qgain[0]);
-				buffer[1] += apply_gain(samples[ii], qgain[1]);
-			} else {
-				buffer[0] += apply_gain(samples[2*ii + 0], qgain[0]);
-				buffer[1] += apply_gain(samples[2*ii + 1], qgain[1]);
+		for (int cc = 0; cc < 2; ++cc) {
+			for (int ii = 0; ii < samples_written; ++ii) {
+				if (nchannels == 1)
+					buffer[c_nsamples*cc + offset + ii] += apply_gain(samples[ii], qgain[cc]);
+				else
+					buffer[c_nsamples*cc + offset + ii] += apply_gain(samples[2*ii + cc], qgain[cc]);
 			}
-
-			buffer += 2;
 		}
 
+		offset += samples_written;
 		source->sample_pos += samples_read;
 		remaining -= samples_written;
 	}
 }
 
 static void render_effects(int32_t* buffer) {
-
 	int compressor_factor = g_mixer.compressor_factor;
 
 	// get maximum absolute power level from the rendered buffer, and adjust the compressor factor
@@ -269,26 +266,22 @@ static void render_effects(int32_t* buffer) {
 
     // 2-pass compressor to limit dynamic range of audio clipping levels
 	if (compressor_factor < c_quantize) {
-		int32_t last_samples[2] = {
-			g_mixer.compressor_last_samples[0],
-			g_mixer.compressor_last_samples[1],
-		};
+		for (int cc = 0; cc < 2; ++cc) {
+			int32_t prev_sample = g_mixer.compressor_last_samples[cc];
 
-		for (int ii = 0; ii < c_nsamples; ++ii) {
-			const int32_t prev_sample = last_samples[ii&1];
-			int32_t sample = buffer[ii];
+			int32_t sample = 0;
+			int32_t* channel = buffer + cc*c_nsamples;
+			for (int ii = 0; ii < c_nsamples; ++ii) {
+				int32_t sample = channel[ii];
 
-			// uhhh... linear space? really??
-			int32_t diff = sample - prev_sample;
-			sample = prev_sample + (compressor_factor*diff)/ c_quantize;
-			buffer[ii] = sample;
+				// uhhh... linear space? really??
+				int32_t diff = sample - prev_sample;
+				sample = prev_sample + (compressor_factor*diff)/ c_quantize;
+				channel[ii] = sample;
+			}
 
-			last_samples[ii & 1] = sample;
+			g_mixer.compressor_last_samples[cc] = sample;
 		}
-
-
-		g_mixer.compressor_last_samples[0] = last_samples[0];
-		g_mixer.compressor_last_samples[1] = last_samples[1];
 	}
 
 	g_mixer.compressor_factor = compressor_factor;
@@ -372,15 +365,15 @@ static void mix(int32_t* buffer) {
 }
 
 void tinymixer_getsamples(int16_t* samples, int nsamples) {
-	
 	// was data leftover after the previous call to getsamples? Copy that out here
 	while (nsamples && g_mixer.samples_remaining) {
 		const int samples_to_mix = mixer_min(nsamples, g_mixer.samples_remaining);
-		const int offset = 2*(c_nsamples - g_mixer.samples_remaining);
+		const int offset = c_nsamples - g_mixer.samples_remaining;
 
-		// clip
-		for (int ii = 0; ii < samples_to_mix*2; ++ii)
-			samples[ii] = (int16_t)mixer_clamp(g_mixer.buffer[offset + ii], (int16_t)0x8000, 0x7fff);
+		// clip and interleave
+		for (int cc = 0; cc < 2; ++cc)
+			for (int ii = 0; ii < samples_to_mix; ++ii)
+				samples[cc + 2*ii] = (int16_t)mixer_clamp(g_mixer.buffer[cc*c_nsamples + offset + ii], (int16_t)0x8000, 0x7fff);
 
 		g_mixer.samples_remaining -= samples_to_mix;
 		samples += (2*samples_to_mix);
@@ -393,9 +386,10 @@ void tinymixer_getsamples(int16_t* samples, int nsamples) {
 		mix(g_mixer.buffer);
 		g_mixer.samples_remaining = c_nsamples;
 
-		// clip
-		for (int ii = 0; ii < samples_to_mix*2; ++ii)
-			samples[ii] = (int16_t)mixer_clamp(g_mixer.buffer[ii], (int16_t)0x8000, 0x7fff);
+		// clip and interleave
+		for (int cc = 0; cc < 2; ++cc)
+			for (int ii = 0; ii < samples_to_mix; ++ii)
+				samples[cc + 2*ii] = (int16_t)mixer_clamp(g_mixer.buffer[cc*c_nsamples + ii], (int16_t)0x8000, 0x7fff);
 
 
 		g_mixer.samples_remaining -= samples_to_mix;
