@@ -100,6 +100,7 @@ struct Mixer {
 	int32_t samples_remaining;
 	Source sources[c_nsources];
 	int32_t buffer[2*c_nsamples];
+	int16_t scratch[2*c_nsamples];
 };
 }
 
@@ -157,6 +158,25 @@ static int32_t apply_gain(int16_t sample, int qgain) {
 	return (sample * qgain) / c_quantize;
 }
 
+static void apply_resample_mono(int16_t* out, int nout, const int16_t* in, int qfreq) {
+	for (int qpos = 0; nout; --nout, qpos += qfreq) {
+		const int qindex = qpos / c_quantize;
+		const int qinterp = qpos % c_quantize;
+
+		*out++ = in[qindex] + qinterp * (in[qindex + 1] - in[qindex]) / c_quantize;
+	}
+}
+
+static void apply_resample_stereo(int16_t* out, int nout, const int16_t* in, int qfreq) {
+	for (int qpos = 0; nout; --nout, qpos += qfreq) {
+		const int qindex = qpos / c_quantize;
+		const int qinterp = qpos % c_quantize;
+
+		*out++ = in[2*qindex + 0] + qinterp * (in[2*qindex + 1 + 0] - in[2*qindex + 0]) / c_quantize;
+		*out++ = in[2*qindex + 1] + qinterp * (in[2*qindex + 1 + 1] - in[2*qindex + 1]) / c_quantize;
+	}
+}
+
 static void render(Source* source, int32_t* buffer, const int qgain[2]) {
 	const bool looping = 0 != (source->flags & SourceFlags::Looping);
 	const int nchannels = source->buffer->nchannels;
@@ -169,40 +189,35 @@ static void render(Source* source, int32_t* buffer, const int qgain[2]) {
 
 		// source has a non-1.0f frequency shift
 		if (source->flags & SourceFlags::Frequency) {
-			// samples_read/_written need to be modified to compensate for the frequency difference
 			const int qfreq = (int)(source->frequency * c_quantize);
-			samples_read = (samples_read * qfreq) / c_quantize;
-			if (samples_read >= source->buffer->nsamples - source->sample_pos) {
-				// adjust samples_written so we loop properly if needed
-				samples_read = source->buffer->nsamples - source->sample_pos;
-				samples_written = (samples_read * c_quantize) / qfreq;
-				if (samples_read & c_quantize_mask) {
-					++samples_written;
-				}
-			}
+			samples_read = mixer_min((samples_written * qfreq) / c_quantize, source->buffer->nsamples - source->sample_pos);
+			int samples_needed = samples_read;
 
-			for (int ii = 0; ii < samples_written; ++ii) {
-				const int offset0 = ((ii+0) * qfreq) / c_quantize;
-				int offset1 = ((ii+1) * qfreq) / c_quantize;
-				// handle the case where the interpolation target is out of range (loop or clamp depending on source)
-				if (offset1 >= source->buffer->nsamples - source->sample_pos) {
-					offset1 = (looping ? 0 : source->buffer->nsamples - source->sample_pos - 1);
-				}
+			while (samples_needed) {
+				int nsamples = samples_needed;
+				if (nsamples > c_nsamples)
+					nsamples = c_nsamples;
+				const int nsamplesout = (nsamples * c_quantize) / qfreq;
 
-				const int qinterp = (ii*qfreq) & c_quantize_mask;
-
-				int32_t new_samples[2];
+				// sample source into scratch space, then apply to output mix
 				if (nchannels == 1) {
-					const int32_t sample = samples[offset0] + qinterp * (samples[offset1] - samples[offset0]) / c_quantize;
-					new_samples[0] = new_samples[1] = sample;
+					apply_resample_mono(g_mixer.scratch, nsamplesout, samples, qfreq);
+					samples += nsamples;
+					for (int ii = 0; ii < nsamplesout; ++ii) {
+						buffer[2*ii + 0] += apply_gain(g_mixer.scratch[ii], qgain[0]);
+						buffer[2*ii + 1] += apply_gain(g_mixer.scratch[ii], qgain[1]);
+					}
 				} else {
-					new_samples[0] = samples[2*offset0 + 0] + qinterp * (samples[2*offset1 + 0] - samples[2*offset0 + 0]) / c_quantize;
-					new_samples[1] = samples[2*offset0 + 1] + qinterp * (samples[2*offset1 + 1] - samples[2*offset0 + 1]) / c_quantize;
+					apply_resample_stereo(g_mixer.scratch, nsamplesout, samples, qfreq);
+					samples += 2 * nsamples;
+					for (int ii = 0; ii < nsamplesout; ++ii) {
+						buffer[2*ii + 0] += apply_gain(g_mixer.scratch[2*ii + 0], qgain[0]);
+						buffer[2*ii + 1] += apply_gain(g_mixer.scratch[2*ii + 1], qgain[1]);
+					}
 				}
 
-				buffer[0] += apply_gain(new_samples[0], qgain[0]);
-				buffer[1] += apply_gain(new_samples[1], qgain[1]);
-				buffer += 2;
+				buffer += 2 * nsamplesout;
+				samples_needed -= nsamples;
 			}
 		} else {
 			for (int ii = 0; ii < samples_written; ++ii) {
