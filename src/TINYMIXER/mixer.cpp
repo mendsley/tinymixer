@@ -159,7 +159,7 @@ static int32_t apply_gain(int16_t sample, int qgain) {
 	return (sample * qgain) / c_quantize;
 }
 
-static void apply_resample_mono(int16_t* out, int nout, const int16_t* in, int qfreq) {
+static void resample_mono(int16_t* out, int nout, const int16_t* in, int qfreq) {
 	for (int qpos = 0; nout; --nout, qpos += qfreq) {
 		const int qindex = qpos / c_quantize;
 		const int qinterp = qpos % c_quantize;
@@ -168,22 +168,14 @@ static void apply_resample_mono(int16_t* out, int nout, const int16_t* in, int q
 	}
 }
 
-static void apply_resample_stereo_interleaved(int16_t* out, int nout, const int16_t* in, int qfreq) {
-	for (int qpos = 0; nout; --nout, qpos += qfreq) {
-		const int qindex = qpos / c_quantize;
-		const int qinterp = qpos % c_quantize;
-
-		*out++ = in[2*qindex + 0] + qinterp * (in[2*qindex + 1 + 0] - in[2*qindex + 0]) / c_quantize;
-		*out++ = in[2*qindex + 1] + qinterp * (in[2*qindex + 1 + 1] - in[2*qindex + 1]) / c_quantize;
-	}
-}
-
 static void render(Source* source, int32_t* buffer, const int qgain[2]) {
 	const bool looping = 0 != (source->flags & SourceFlags::Looping);
 	const int nchannels = source->buffer->nchannels;
 
+	int32_t* left = buffer;
+	int32_t* right = buffer + c_nsamples;
+
 	int remaining = c_nsamples;
-	int offset = 0;
 	while (remaining) {
 		// handle looping audio
 		if (source->sample_pos == source->buffer->nsamples) {
@@ -196,7 +188,11 @@ static void render(Source* source, int32_t* buffer, const int qgain[2]) {
 
 		int samples_read = mixer_min(source->buffer->nsamples - source->sample_pos, remaining);
 		int samples_written = samples_read;
-		const int16_t* samples = (const int16_t*)(source->buffer + 1) + (source->sample_pos * nchannels);
+
+		const int16_t* srcleft  = (const int16_t*)(source->buffer + 1) + source->sample_pos;
+		const int16_t* srcright = srcleft;
+		if (nchannels == 2)
+			srcright += source->buffer->nsamples;
 
 		// source has a non-1.0f frequency shift
 		if (source->flags & SourceFlags::Frequency) {
@@ -211,26 +207,22 @@ static void render(Source* source, int32_t* buffer, const int qgain[2]) {
 				return;
 
 			// resample source into scratch space
-			if (nchannels == 1) {
-				apply_resample_mono(g_mixer.scratch, samples_written, samples, qfreq);
-			} else {
-				apply_resample_stereo_interleaved(g_mixer.scratch, samples_written, samples, qfreq);
+			resample_mono(g_mixer.scratch, samples_written, srcleft, qfreq);
+			if (nchannels == 2) {
+				resample_mono(g_mixer.scratch + samples_written, samples_written, srcright, qfreq);
 			}
 
-			samples = g_mixer.scratch;
+			srcleft = srcright = g_mixer.scratch;
+			if (nchannels == 2)
+				srcright += samples_written;
 		}
 
 		// render the source to the output mix
-		for (int cc = 0; cc < 2; ++cc) {
-			for (int ii = 0; ii < samples_written; ++ii) {
-				if (nchannels == 1)
-					buffer[c_nsamples*cc + offset + ii] += apply_gain(samples[ii], qgain[cc]);
-				else
-					buffer[c_nsamples*cc + offset + ii] += apply_gain(samples[2*ii + cc], qgain[cc]);
-			}
-		}
+		for (int ii = 0; ii < samples_written; ++ii)
+			*left++ += apply_gain(srcleft[ii], qgain[0]);
+		for (int ii = 0; ii < samples_written; ++ii)
+			*right++ += apply_gain(srcright[ii], qgain[1]);
 
-		offset += samples_written;
 		source->sample_pos += samples_read;
 		remaining -= samples_written;
 	}
@@ -421,33 +413,38 @@ static void play(Source* source) {
 }
 
 void tinymixer_create_buffer_interleaved_s16le(int channels, const int16_t* pcm_data, int pcm_data_size, const tinymixer_buffer** handle) {
+	const int nsamples = pcm_data_size/sizeof(uint16_t)/channels;
+
 	Buffer* buffer = (Buffer*)tinymixer_alloc(sizeof(Buffer) + pcm_data_size);
 	buffer->refcnt = 1;
 	buffer->nchannels = (uint8_t)channels;
-	buffer->nsamples = pcm_data_size/sizeof(int16_t)/channels;
+	buffer->nsamples = nsamples;
 
 	// copy samples
 	const int16_t* source = (const int16_t*)pcm_data;
 	int16_t* dest = (int16_t*)(buffer + 1);
-	const int nsamples = pcm_data_size/sizeof(uint16_t);
-	for (int ii = 0; ii < nsamples; ++ii)
-		*dest++ = *source++;
+	for (int cc = 0; cc < channels; ++cc) {
+		for (int ii = 0; ii < nsamples; ++ii)
+			*dest++ = source[channels*ii + cc];
+	}
 
 	*handle = (tinymixer_buffer*)buffer;
 }
 
 void tinymixer_create_buffer_interleaved_float(int channels, const float* pcm_data, int pcm_data_size, const tinymixer_buffer** handle) {
+	const int nsamples = pcm_data_size/sizeof(float)/channels;
+
 	Buffer* buffer = (Buffer*)tinymixer_alloc(sizeof(Buffer) + pcm_data_size);
 	buffer->refcnt = 1;
 	buffer->nchannels = (uint8_t)channels;
-	buffer->nsamples = pcm_data_size/sizeof(float)/channels;
+	buffer->nsamples = nsamples;
 
 	// copy samples
 	const float* source = (const float*)pcm_data;
 	int16_t* dest = (int16_t*)(buffer + 1);
-	const int nsamples = pcm_data_size/sizeof(float);
-	for (int ii = 0; ii < nsamples; ++ii) {
-		*dest++ = (int16_t)mixer_clamp((int32_t)(*source++ * (float)0x8000), (int16_t)0x8000, 0x7fff);
+	for (int cc = 0; cc < channels; ++cc) {
+		for (int ii = 0; ii < nsamples; ++ii)
+			*dest++ = (int16_t)mixer_clamp((int32_t)(source[channels*ii + cc] * (float)0x8000), (int16_t)0x8000, 0x7fff);
 	}
 
 	*handle = (tinymixer_buffer*)buffer;
