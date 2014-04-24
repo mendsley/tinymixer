@@ -205,12 +205,9 @@ static void render(Source* source, int32_t* buffer, const int qgain[2]) {
 			if (samples_read > c_nsamples)
 				samples_read = c_nsamples;
 
-			// write at least 1 sample
 			samples_written = (samples_read * c_quantize) / qfreq;
-			if (samples_written == 0) {
-				source->sample_pos = source->buffer->nsamples;
-				continue;
-			}
+			if (samples_written == 0)
+				return;
 
 			// resample source into scratch space
 			if (nchannels == 1) {
