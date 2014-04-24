@@ -444,8 +444,9 @@ void tinymixer_create_buffer_float(int channels, const float* pcm_data, int pcm_
 	const float* source = (const float*)pcm_data;
 	int16_t* dest = (int16_t*)(buffer + 1);
 	const int nsamples = pcm_data_size/sizeof(float);
-	for (int ii = 0; ii < nsamples; ++ii)
-		*dest++ = (int16_t)(*source++ * (float)0x8000);
+	for (int ii = 0; ii < nsamples; ++ii) {
+		*dest++ = (int16_t)mixer_clamp((int32_t)(*source++ * (float)0x8000), (int16_t)0x8000, 0x7fff);
+	}
 
 	*handle = (tinymixer_buffer*)buffer;
 }
