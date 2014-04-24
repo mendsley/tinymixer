@@ -208,34 +208,28 @@ static void render(Source* source, int32_t* buffer, const int qgain[2]) {
 			// write at least 1 sample
 			samples_written = mixer_max((samples_read * c_quantize) / qfreq, 1);
 
-			// sample source into scratch space, then apply to output mix
+			// resample source into scratch space
 			if (nchannels == 1) {
 				apply_resample_mono(g_mixer.scratch, samples_written, samples, qfreq);
-				for (int ii = 0; ii < samples_written; ++ii) {
-					buffer[2*ii + 0] += apply_gain(g_mixer.scratch[ii], qgain[0]);
-					buffer[2*ii + 1] += apply_gain(g_mixer.scratch[ii], qgain[1]);
-				}
 			} else {
 				apply_resample_stereo(g_mixer.scratch, samples_written, samples, qfreq);
-				for (int ii = 0; ii < samples_written; ++ii) {
-					buffer[2*ii + 0] += apply_gain(g_mixer.scratch[2*ii + 0], qgain[0]);
-					buffer[2*ii + 1] += apply_gain(g_mixer.scratch[2*ii + 1], qgain[1]);
-				}
 			}
 
-			buffer += 2 * samples_written;
-		} else {
-			for (int ii = 0; ii < samples_written; ++ii) {
-				if (nchannels == 1) {
-					buffer[0] += apply_gain(samples[ii], qgain[0]);
-					buffer[1] += apply_gain(samples[ii], qgain[1]);
-				} else {
-					buffer[0] += apply_gain(samples[2*ii + 0], qgain[0]);
-					buffer[1] += apply_gain(samples[2*ii + 1], qgain[1]);
-				}
+			samples = g_mixer.scratch;
 
-				buffer += 2;
+		}
+
+		// render the source to the output mix
+		for (int ii = 0; ii < samples_written; ++ii) {
+			if (nchannels == 1) {
+				buffer[0] += apply_gain(samples[ii], qgain[0]);
+				buffer[1] += apply_gain(samples[ii], qgain[1]);
+			} else {
+				buffer[0] += apply_gain(samples[2*ii + 0], qgain[0]);
+				buffer[1] += apply_gain(samples[2*ii + 1], qgain[1]);
 			}
+
+			buffer += 2;
 		}
 
 		source->sample_pos += samples_read;
