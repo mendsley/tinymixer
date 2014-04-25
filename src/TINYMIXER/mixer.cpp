@@ -64,9 +64,19 @@ struct SourceFlags {
 	};
 };
 
+struct Source;
+struct buffer_functions {
+	void (*on_destroy)(Buffer* buffer);
+
+	void (*start_source)(Source* source);
+	void (*end_source)(Source* source);
+	int (*request_samples)(Source* source, const float** left, const float** right, int nsamples);
+};
+
 struct Buffer {
 	int32_t refcnt;
 	int32_t nsamples;
+	const buffer_functions *funcs;
 	uint8_t nchannels;
 	// float smaples[nsamples*nschannels];
 };
@@ -137,8 +147,17 @@ static void addref(Buffer* buffer) {
 
 static void decref(Buffer* buffer) {
 	if (0 == --buffer->refcnt) {
+		buffer->funcs->on_destroy(buffer);
 		tinymixer_free(buffer);
 	}
+}
+
+static void kill_source(Source* source) {
+	source->buffer->funcs->end_source(source);
+
+	decref((Buffer*)source->buffer);
+	source->buffer = 0;
+	source->flags = 0;
 }
 
 static Source *find_source() {
@@ -161,8 +180,7 @@ static Source *find_source() {
 
 	if (NULL != best_source) {
 		if (best_source->buffer) {
-			decref((Buffer*)best_source->buffer);
-			best_source->buffer = NULL;
+			kill_source(best_source);
 		}
 	}
 	return best_source;
@@ -175,32 +193,6 @@ static void resample_mono(float* out, int nout, const float* in, int qfreq) {
 
 		*out++ = in[qindex] + (float)qinterp * (in[qindex + 1] - in[qindex]) / (float)c_quantize;
 	}
-}
-
-static int source_requestsamples(Source* source, int nsamples, const float** left, const float** right) {
-	int sample_pos = source->instance_data.static_source.sample_pos;
-
-	// handle looping sources
-	if (sample_pos == source->buffer->nsamples) {
-		if (source->flags & SourceFlags::Looping) {
-			sample_pos = 0;
-		} else {
-			return 0;
-		}
-	}
-
-	nsamples = mixer_min(source->buffer->nsamples - sample_pos, nsamples);
-	const float* srcleft = (float*)(source->buffer + 1) + sample_pos;
-
-	*left = srcleft;
-	if (source->buffer->nchannels == 1)
-		*right = srcleft;
-	else {
-		*right = srcleft + source->buffer->nsamples;
-	}
-
-	source->instance_data.static_source.sample_pos += nsamples;
-	return nsamples;
 }
 
 static void render(Source* source, float* buffer, const float gain[2]) {
@@ -220,7 +212,7 @@ static void render(Source* source, float* buffer, const float gain[2]) {
 		// source has a non-1.0f frequency shift
 		if (source->flags & SourceFlags::Frequency) {
 			const int qfreq = (int)(source->frequency * c_quantize);
-			samples_read = source_requestsamples(source, mixer_min((samples_written * qfreq) / c_quantize, c_nsamples), &srcleft, &srcright);
+			samples_read = source->buffer->funcs->request_samples(source, &srcleft, &srcright, mixer_min((samples_written * qfreq) / c_quantize, c_nsamples));
 			if (samples_read == 0) {
 				// source is no longer playing
 				source->flags &= ~SourceFlags::Playing;
@@ -241,7 +233,7 @@ static void render(Source* source, float* buffer, const float gain[2]) {
 			if (nchannels == 2)
 				srcright += samples_written;
 		} else {
-			samples_read = source_requestsamples(source, samples_read, &srcleft, &srcright);
+			samples_read = source->buffer->funcs->request_samples(source, &srcleft, &srcright, samples_read);
 			if (samples_read == 0) {
 				// source is no longer playing
 				source->flags &= ~SourceFlags::Playing;
@@ -376,14 +368,17 @@ static void mix(float* buffer) {
 		if (source->flags & SourceFlags::FadeOut) {
 			source->gain_base -= source->fadeout_per_sample * c_nsamples;
 			if (source->gain_base <= 0.0f) {
-				decref((Buffer*)source->buffer);
-				source->buffer = 0;
 				source->flags = 0;
 			}
-		} else if (0 == (source->flags & SourceFlags::Playing)) {
-			decref((Buffer*)source->buffer);
-			source->buffer = 0;
-			source->flags = 0;
+		}
+	}
+
+	// cleanup dead sources
+	for (int ii = 0; ii < nplaying; ++ii) {
+		Source* source = &g_mixer.sources[playing[ii]];
+
+		if (0 == (source->flags & SourceFlags::Playing)) {
+			kill_source(source);
 		}
 	}
 }
@@ -433,9 +428,10 @@ static Source* add(const tinymixer_buffer* handle, int gain_index, float gain) {
 
 	source->buffer = (const Buffer*)handle;
 	source->gain_base = gain;
-	source->instance_data.static_source.sample_pos = 0;
 	source->gain_base_index = (uint8_t)gain_index;
 	source->frame_age = 0;
+
+	source->buffer->funcs->start_source(source);
 
 	addref((Buffer*)handle);
 	return source;
@@ -445,12 +441,57 @@ static void play(Source* source) {
 	source->flags |= SourceFlags::Playing;
 }
 
+
+static void static_sample_buffer_on_destroy(Buffer* buffer) {
+}
+
+static void static_sample_buffer_start_source(Source* source) {
+	source->instance_data.static_source.sample_pos = 0;
+}
+
+static void static_sample_buffer_end_source(Source*source) {
+}
+
+static int static_sample_buffer_request_samples(Source* source, const float** left, const float** right, int nsamples) {
+	int sample_pos = source->instance_data.static_source.sample_pos;
+
+	// handle looping sources
+	if (sample_pos == source->buffer->nsamples) {
+		if (source->flags & SourceFlags::Looping) {
+			sample_pos = 0;
+		} else {
+			return 0;
+		}
+	}
+
+	nsamples = mixer_min(source->buffer->nsamples - sample_pos, nsamples);
+	const float* srcleft = (float*)(source->buffer + 1) + sample_pos;
+
+	*left = srcleft;
+	if (source->buffer->nchannels == 1)
+		*right = srcleft;
+	else {
+		*right = srcleft + source->buffer->nsamples;
+	}
+
+	source->instance_data.static_source.sample_pos += nsamples;
+	return nsamples;
+}
+
+static buffer_functions static_sample_functions = {
+	static_sample_buffer_on_destroy,
+	static_sample_buffer_start_source,
+	static_sample_buffer_end_source,
+	static_sample_buffer_request_samples,
+};
+
 void tinymixer_create_buffer_interleaved_s16le(int channels, const int16_t* pcm_data, int pcm_data_size, const tinymixer_buffer** handle) {
 	const int nsamples = pcm_data_size/sizeof(uint16_t)/channels;
 
 	Buffer* buffer = (Buffer*)tinymixer_alloc(sizeof(Buffer) + nsamples*channels*sizeof(float));
 	buffer->refcnt = 1;
 	buffer->nchannels = (uint8_t)channels;
+	buffer->funcs = &static_sample_functions;
 	buffer->nsamples = nsamples;
 
 	// copy samples
@@ -470,6 +511,7 @@ void tinymixer_create_buffer_interleaved_float(int channels, const float* pcm_da
 	Buffer* buffer = (Buffer*)tinymixer_alloc(sizeof(Buffer) + nsamples*channels*sizeof(float));
 	buffer->refcnt = 1;
 	buffer->nchannels = (uint8_t)channels;
+	buffer->funcs = &static_sample_functions;
 	buffer->nsamples = nsamples;
 
 	// copy samples
@@ -695,9 +737,7 @@ void tinymixer_stop_all_sources() {
 	for (int ii = 0; ii < c_nsources; ++ii) {
 		Source* source = &g_mixer.sources[ii];
 		if (source->buffer) {
-			decref((Buffer*)source->buffer);
-			source->buffer = 0;
-			source->flags = 0;
+			kill_source(source);
 		}
 	}
 }
