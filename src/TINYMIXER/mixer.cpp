@@ -171,6 +171,15 @@ static void resample_mono(float* out, int nout, const float* in, int qfreq) {
 }
 
 static int source_requestsamples(Source* source, int nsamples, const float** left, const float** right) {
+	// handle looping sources
+	if (source->sample_pos == source->buffer->nsamples) {
+		if (source->flags & SourceFlags::Looping) {
+			source->sample_pos = 0;
+		} else {
+			return 0;
+		}
+	}
+
 	nsamples = mixer_min(source->buffer->nsamples - source->sample_pos, nsamples);
 	const float* srcleft = (float*)(source->buffer + 1) + source->sample_pos;
 
@@ -185,7 +194,6 @@ static int source_requestsamples(Source* source, int nsamples, const float** lef
 }
 
 static void render(Source* source, float* buffer, const float gain[2]) {
-	const bool looping = 0 != (source->flags & SourceFlags::Looping);
 	const int nchannels = source->buffer->nchannels;
 
 	float* left = buffer;
@@ -193,15 +201,6 @@ static void render(Source* source, float* buffer, const float gain[2]) {
 
 	int remaining = c_nsamples;
 	while (remaining) {
-		// handle looping audio
-		if (source->sample_pos == source->buffer->nsamples) {
-			if (looping) {
-				source->sample_pos = 0;
-			} else {
-				break;
-			}
-		}
-
 		int samples_read = remaining;
 		int samples_written = samples_read;
 
@@ -212,6 +211,11 @@ static void render(Source* source, float* buffer, const float gain[2]) {
 		if (source->flags & SourceFlags::Frequency) {
 			const int qfreq = (int)(source->frequency * c_quantize);
 			samples_read = source_requestsamples(source, mixer_min((samples_written * qfreq) / c_quantize, c_nsamples), &srcleft, &srcright);
+			if (samples_read == 0) {
+				// source is no longer playing
+				source->flags &= ~SourceFlags::Playing;
+				return;
+			}
 
 			samples_written = (samples_read * c_quantize) / qfreq;
 			if (samples_written == 0)
@@ -228,6 +232,11 @@ static void render(Source* source, float* buffer, const float gain[2]) {
 				srcright += samples_written;
 		} else {
 			samples_read = source_requestsamples(source, samples_read, &srcleft, &srcright);
+			if (samples_read == 0) {
+				// source is no longer playing
+				source->flags &= ~SourceFlags::Playing;
+				return;
+			}
 			samples_written = samples_read;
 		}
 
@@ -361,7 +370,7 @@ static void mix(float* buffer) {
 				source->buffer = 0;
 				source->flags = 0;
 			}
-		} else if (source->sample_pos >= source->buffer->nsamples && 0 == (source->flags & SourceFlags::Looping)) {
+		} else if (0 == (source->flags & SourceFlags::Playing)) {
 			decref((Buffer*)source->buffer);
 			source->buffer = 0;
 			source->flags = 0;
