@@ -191,6 +191,7 @@ static int source_requestsamples(Source* source, int nsamples, const float** lef
 		*right = srcleft + source->buffer->nsamples;
 	}
 
+	source->sample_pos += nsamples;
 	return nsamples;
 }
 
@@ -247,7 +248,6 @@ static void render(Source* source, float* buffer, const float gain[2]) {
 		for (int ii = 0; ii < samples_written; ++ii)
 			*right++ += gain[1] * srcright[ii];
 
-		source->sample_pos += samples_read;
 		remaining -= samples_written;
 	}
 }
