@@ -31,10 +31,10 @@
 
 struct tinymixer_buffer;
 typedef uint8_t tinymixer_loop;
-typedef void (*tinymixer_callback)(int32_t* samples, int nsamples, float gain);
+typedef void (*tinymixer_callback)(float* samples, int nsamples, float gain);
 
 void tinymixer_init(int sample_rate, tinymixer_callback callback);
-void tinymixer_getsamples(int16_t* samples, int nsamples);
+void tinymixer_getsamples(float* samples, int nsamples);
 void tinymixer_set_mastergain(float gain);
 
 void tinymixer_create_buffer_interleaved_s16le(int channels, const int16_t* pcm_data, int pcm_data_size, const tinymixer_buffer** handle);
