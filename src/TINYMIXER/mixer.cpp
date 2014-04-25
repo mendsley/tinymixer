@@ -80,9 +80,6 @@ struct buffer_functions {
 struct Buffer {
 	const buffer_functions *funcs;
 	int32_t refcnt;
-	int32_t nsamples;
-	uint8_t nchannels;
-	// float smaples[nsamples*nschannels];
 };
 
 struct static_source_data {
@@ -446,6 +443,14 @@ static void play(Source* source) {
 	source->flags |= SourceFlags::Playing;
 }
 
+namespace {
+struct StaticSampleBuffer {
+	Buffer buffer;
+	int32_t nsamples;
+	uint8_t nchannels;
+	// float smaples[nsamples*nschannels];
+};
+}
 
 static void static_sample_buffer_on_destroy(Buffer* buffer) {
 }
@@ -458,10 +463,12 @@ static void static_sample_buffer_end_source(Source*source) {
 }
 
 static int static_sample_buffer_request_samples(Source* source, const float** left, const float** right, int nsamples) {
+	const StaticSampleBuffer* buffer = (const StaticSampleBuffer*)source->buffer;
+
 	int sample_pos = source->instance_data.static_source.sample_pos;
 
 	// handle looping sources
-	if (sample_pos == source->buffer->nsamples) {
+	if (sample_pos == buffer->nsamples) {
 		if (source->flags & SourceFlags::Looping) {
 			sample_pos = 0;
 		} else {
@@ -469,14 +476,14 @@ static int static_sample_buffer_request_samples(Source* source, const float** le
 		}
 	}
 
-	nsamples = mixer_min(source->buffer->nsamples - sample_pos, nsamples);
-	const float* srcleft = (float*)(source->buffer + 1) + sample_pos;
+	nsamples = mixer_min(buffer->nsamples - sample_pos, nsamples);
+	const float* srcleft = (float*)(buffer + 1) + sample_pos;
 
 	*left = srcleft;
-	if (source->buffer->nchannels == 1)
+	if (buffer->nchannels == 1)
 		*right = srcleft;
 	else {
-		*right = srcleft + source->buffer->nsamples;
+		*right = srcleft + buffer->nsamples;
 	}
 
 	source->instance_data.static_source.sample_pos += nsamples;
@@ -484,7 +491,8 @@ static int static_sample_buffer_request_samples(Source* source, const float** le
 }
 
 static int static_sample_buffer_get_buffer_size(const Buffer* buffer) {
-	return sizeof(Buffer) + sizeof(float)*buffer->nchannels*buffer->nsamples;
+	const StaticSampleBuffer* sbuffer = (const StaticSampleBuffer*)buffer;
+	return sizeof(StaticSampleBuffer) + sizeof(float)*sbuffer->nchannels*sbuffer->nsamples;
 }
 
 static buffer_functions static_sample_functions = {
@@ -498,9 +506,9 @@ static buffer_functions static_sample_functions = {
 void tinymixer_create_buffer_interleaved_s16le(int channels, const int16_t* pcm_data, int pcm_data_size, const tinymixer_buffer** handle) {
 	const int nsamples = pcm_data_size/sizeof(uint16_t)/channels;
 
-	Buffer* buffer = (Buffer*)tinymixer_alloc(sizeof(Buffer) + nsamples*channels*sizeof(float));
-	buffer->funcs = &static_sample_functions;
-	buffer->refcnt = 1;
+	StaticSampleBuffer* buffer = (StaticSampleBuffer*)tinymixer_alloc(sizeof(Buffer) + nsamples*channels*sizeof(float));
+	buffer->buffer.funcs = &static_sample_functions;
+	buffer->buffer.refcnt = 1;
 	buffer->nchannels = (uint8_t)channels;
 	buffer->nsamples = nsamples;
 
@@ -518,9 +526,9 @@ void tinymixer_create_buffer_interleaved_s16le(int channels, const int16_t* pcm_
 void tinymixer_create_buffer_interleaved_float(int channels, const float* pcm_data, int pcm_data_size, const tinymixer_buffer** handle) {
 	const int nsamples = pcm_data_size/sizeof(float)/channels;
 
-	Buffer* buffer = (Buffer*)tinymixer_alloc(sizeof(Buffer) + nsamples*channels*sizeof(float));
-	buffer->funcs = &static_sample_functions;
-	buffer->refcnt = 1;
+	StaticSampleBuffer* buffer = (StaticSampleBuffer*)tinymixer_alloc(sizeof(Buffer) + nsamples*channels*sizeof(float));
+	buffer->buffer.funcs = &static_sample_functions;
+	buffer->buffer.refcnt = 1;
 	buffer->nchannels = (uint8_t)channels;
 	buffer->nsamples = nsamples;
 
