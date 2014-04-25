@@ -73,12 +73,14 @@ struct buffer_functions {
 	void (*start_source)(Source* source);
 	void (*end_source)(Source* source);
 	int (*request_samples)(Source* source, const float** left, const float** right, int nsamples);
+
+	int (*get_buffer_size)(const Buffer* buffer);
 };
 
 struct Buffer {
+	const buffer_functions *funcs;
 	int32_t refcnt;
 	int32_t nsamples;
-	const buffer_functions *funcs;
 	uint8_t nchannels;
 	// float smaples[nsamples*nschannels];
 };
@@ -481,20 +483,25 @@ static int static_sample_buffer_request_samples(Source* source, const float** le
 	return nsamples;
 }
 
+static int static_sample_buffer_get_buffer_size(const Buffer* buffer) {
+	return sizeof(Buffer) + sizeof(float)*buffer->nchannels*buffer->nsamples;
+}
+
 static buffer_functions static_sample_functions = {
 	static_sample_buffer_on_destroy,
 	static_sample_buffer_start_source,
 	static_sample_buffer_end_source,
 	static_sample_buffer_request_samples,
+	static_sample_buffer_get_buffer_size,
 };
 
 void tinymixer_create_buffer_interleaved_s16le(int channels, const int16_t* pcm_data, int pcm_data_size, const tinymixer_buffer** handle) {
 	const int nsamples = pcm_data_size/sizeof(uint16_t)/channels;
 
 	Buffer* buffer = (Buffer*)tinymixer_alloc(sizeof(Buffer) + nsamples*channels*sizeof(float));
+	buffer->funcs = &static_sample_functions;
 	buffer->refcnt = 1;
 	buffer->nchannels = (uint8_t)channels;
-	buffer->funcs = &static_sample_functions;
 	buffer->nsamples = nsamples;
 
 	// copy samples
@@ -512,9 +519,9 @@ void tinymixer_create_buffer_interleaved_float(int channels, const float* pcm_da
 	const int nsamples = pcm_data_size/sizeof(float)/channels;
 
 	Buffer* buffer = (Buffer*)tinymixer_alloc(sizeof(Buffer) + nsamples*channels*sizeof(float));
+	buffer->funcs = &static_sample_functions;
 	buffer->refcnt = 1;
 	buffer->nchannels = (uint8_t)channels;
-	buffer->funcs = &static_sample_functions;
 	buffer->nsamples = nsamples;
 
 	// copy samples
@@ -530,7 +537,7 @@ void tinymixer_create_buffer_interleaved_float(int channels, const float* pcm_da
 
 int tinymixer_get_buffer_size(const tinymixer_buffer* handle) {
 	const Buffer* buffer = (const Buffer*)handle;
-	return sizeof(Buffer)+sizeof(float)*buffer->nchannels*buffer->nsamples;
+	return buffer->funcs->get_buffer_size(buffer);
 }
 
 void tinymixer_release_buffer(const tinymixer_buffer* handle) {
