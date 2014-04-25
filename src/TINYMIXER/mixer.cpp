@@ -27,6 +27,10 @@
 #include <TINYMIXER/mixer.h>
 #include <stdint.h>
 
+#if TINYMIXER_SUPPORT_VORBIS_STREAM
+#include <TINYVORBIS/vorbis.h>
+#endif
+
 #ifndef tinymixer_sqrtf
 #include <math.h>
 #define tinymixer_sqrtf sqrtf
@@ -51,6 +55,11 @@
 #if !defined(tinymixer_memset)
 #include <string.h>
 #define tinymixer_memset memset
+#endif
+
+#if !defined(tinymixer_memcpy)
+#include <string.h>
+#define tinymixer_memcpy memcpy
 #endif
 
 namespace {
@@ -86,10 +95,21 @@ struct static_source_data {
 	int32_t sample_pos;
 };
 
+#if TINYMIXER_SUPPORT_VORBIS_STREAM
+struct vorbis_stream_data {
+	stb_vorbis* v;
+	const float* outputs[2];
+	int noutputs;
+};
+#endif
+
 struct Source {
 	const Buffer* buffer;
 	union {
 		static_source_data static_source;
+#if TINYMIXER_SUPPORT_VORBIS_STREAM
+		vorbis_stream_data vorbis_stream;
+#endif
 	} instance_data;
 	float position[3];
 	float fadeout_per_sample;
@@ -378,7 +398,6 @@ static void mix(float* buffer) {
 	// cleanup dead sources
 	for (int ii = 0; ii < nplaying; ++ii) {
 		Source* source = &g_mixer.sources[playing[ii]];
-
 		if (0 == (source->flags & SourceFlags::Playing)) {
 			kill_source(source);
 		}
@@ -542,6 +561,106 @@ void tinymixer_create_buffer_interleaved_float(int channels, const float* pcm_da
 
 	*handle = (tinymixer_buffer*)buffer;
 }
+
+#if TINYMIXER_SUPPORT_VORBIS_STREAM
+
+namespace {
+struct VorbisStreamBuffer {
+	Buffer buffer;
+	void* opaque;
+	void (*closed)(void*);
+	int ndata;
+	// uint8_t vorbis_data[ndata]
+};
+}
+
+static void vorbis_stream_on_destroy(Buffer* buffer) {
+	VorbisStreamBuffer* vbuffer = (VorbisStreamBuffer*)buffer;
+	if (vbuffer->closed)
+		vbuffer->closed(vbuffer->opaque);
+}
+
+static void vorbis_stream_start_source(Source* source) {
+	const VorbisStreamBuffer* vbuffer = (const VorbisStreamBuffer*)source->buffer;
+	vorbis_stream_data* vsd = &source->instance_data.vorbis_stream;
+
+	// open the vorbis stream
+	unsigned char* data = (unsigned char*)(vbuffer + 1);
+	vsd->v = stb_vorbis_open_memory(data, vbuffer->ndata, NULL, NULL);
+	vsd->noutputs = 0;
+}
+
+static void vorbis_stream_end_source(Source* source) {
+	stb_vorbis* v = source->instance_data.vorbis_stream.v;
+	if (v)
+		stb_vorbis_close(v);
+
+	source->instance_data.vorbis_stream.v = 0;
+}
+
+static int vorbis_stream_request_samples(Source* source, const float** left, const float** right, int nsamples) {
+	vorbis_stream_data* vsd = &source->instance_data.vorbis_stream;
+
+	// no steam?
+	if (!vsd->v)
+		return 0;
+
+	if (vsd->noutputs == 0) {
+		int channels;
+		float** outputs;
+		vsd->noutputs = stb_vorbis_get_frame_float(vsd->v, &channels, &outputs);
+
+		// if we're looping and have reached the end, seek to the start and try again
+		if (vsd->noutputs == 0 && source->flags & SourceFlags::Looping) {
+			stb_vorbis_seek_start(vsd->v);
+			vsd->noutputs = stb_vorbis_get_frame_float(vsd->v, &channels, &outputs);
+		}
+
+		// handle mono streams
+		if (vsd->noutputs) {
+			vsd->outputs[0] = outputs[0];
+			vsd->outputs[1] = (channels == 1) ? outputs[0] : outputs[1];
+		}
+	}
+
+	nsamples = mixer_min(nsamples, vsd->noutputs);
+
+	*left = vsd->outputs[0];
+	*right = vsd->outputs[1];
+
+	vsd->noutputs -= nsamples;
+	vsd->outputs[0] += nsamples;
+	vsd->outputs[1] += nsamples;
+	return nsamples;
+}
+
+static int vorbis_stream_get_buffer_size(const Buffer* buffer) {
+	const VorbisStreamBuffer* vbuffer = (const VorbisStreamBuffer*)buffer;
+	return sizeof(VorbisStreamBuffer) + vbuffer->ndata;
+}
+
+static buffer_functions vorbis_stream_buffer_funcs = {
+	vorbis_stream_on_destroy,
+	vorbis_stream_start_source,
+	vorbis_stream_end_source,
+	vorbis_stream_request_samples,
+	vorbis_stream_get_buffer_size,
+};
+
+void tinymixer_create_buffer_vorbis_stream(const void* data, int ndata, void* opaque, void (*closed)(void*), const tinymixer_buffer** handle) {
+	VorbisStreamBuffer* buffer = (VorbisStreamBuffer*)tinymixer_alloc(sizeof(VorbisStreamBuffer) + ndata);
+	buffer->buffer.funcs = &vorbis_stream_buffer_funcs;
+	buffer->buffer.refcnt = 1;
+	buffer->opaque = opaque;
+	buffer->closed = closed;
+	buffer->ndata = ndata;
+
+	// copy vorbis data
+	tinymixer_memcpy(buffer + 1, data, ndata);
+	*handle = (tinymixer_buffer*)buffer;
+}
+
+#endif
 
 int tinymixer_get_buffer_size(const tinymixer_buffer* handle) {
 	const Buffer* buffer = (const Buffer*)handle;

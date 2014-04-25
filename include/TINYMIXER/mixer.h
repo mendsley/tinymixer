@@ -29,6 +29,10 @@
 
 #include <stdint.h>
 
+#if !defined(TINYMIXER_SUPPORT_VORBIS_STREAM)
+#define TINYMIXER_SUPPORT_VORBIS_STREAM 0
+#endif
+
 struct tinymixer_buffer;
 typedef uint8_t tinymixer_loop;
 typedef void (*tinymixer_callback)(float* samples, int nsamples, float gain);
@@ -39,6 +43,9 @@ void tinymixer_set_mastergain(float gain);
 
 void tinymixer_create_buffer_interleaved_s16le(int channels, const int16_t* pcm_data, int pcm_data_size, const tinymixer_buffer** handle);
 void tinymixer_create_buffer_interleaved_float(int channels, const float* pcm_data, int pcm_data_size, const tinymixer_buffer** handle);
+#if TINYMIXER_SUPPORT_VORBIS_STREAM
+void tinymixer_create_buffer_vorbis_stream(const void* data, int ndata, void* opaque, void (*closed)(void*), const tinymixer_buffer** handle);
+#endif
 int tinymixer_get_buffer_size(const tinymixer_buffer* handle);
 void tinymixer_release_buffer(const tinymixer_buffer* handle);
 
