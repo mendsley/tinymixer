@@ -461,7 +461,7 @@ void tinymixer_create_buffer_interleaved_float(int channels, const float* pcm_da
 
 int tinymixer_get_buffer_size(const tinymixer_buffer* handle) {
 	const Buffer* buffer = (const Buffer*)handle;
-	return sizeof(Buffer)+sizeof(int16_t)*buffer->nchannels*buffer->nsamples;
+	return sizeof(Buffer)+sizeof(float)*buffer->nchannels*buffer->nsamples;
 }
 
 void tinymixer_release_buffer(const tinymixer_buffer* handle) {
