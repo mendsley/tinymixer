@@ -80,6 +80,7 @@ struct Source {
 	float distance_min;
 	float distance_difference;
 	float frequency;
+	uint16_t frame_age;
 	uint8_t flags;
 	uint8_t gain_base_index;
 };
@@ -136,7 +137,7 @@ static void decref(Buffer* buffer) {
 
 static Source *find_source() {
 	Source* best_source = 0;
-	int32_t best_remaining = 0x7fffffff;
+	uint16_t best_age = 0xffff;
 
 	for (int ii = 0; ii < c_nsources; ++ii) {
 		Source* source = &g_mixer.sources[ii];
@@ -144,10 +145,10 @@ static Source *find_source() {
 			return source;
 
 		if (0 == (source->flags & SourceFlags::Looping)) {
-			const int32_t remaining = source->buffer->nsamples - source->sample_pos;
-			if (remaining < best_remaining) {
+			const uint16_t age = source->frame_age;
+			if (age < best_age) {
 				best_source = source;
-				best_remaining = remaining;
+				best_age = age;
 			}
 		}
 	}
@@ -361,6 +362,7 @@ static void mix(float* buffer) {
 	// perform source-level post processing
 	for (int ii = 0; ii < nplaying; ++ii) {
 		Source* source = &g_mixer.sources[playing[ii]];
+		++source->frame_age;
 
 		// handle fadeout->stop
 		if (source->flags & SourceFlags::FadeOut) {
@@ -425,6 +427,7 @@ static Source* add(const tinymixer_buffer* handle, int gain_index, float gain) {
 	source->gain_base = gain;
 	source->sample_pos = 0;
 	source->gain_base_index = (uint8_t)gain_index;
+	source->frame_age = 0;
 
 	addref((Buffer*)handle);
 	return source;
