@@ -225,6 +225,7 @@ static void render(Source* source, int32_t* buffer, const int qgain[2]) {
 				srcright += samples_written;
 		} else {
 			samples_read = source_requestsamples(source, samples_read, &srcleft, &srcright);
+			samples_written = samples_read;
 		}
 
 		// render the source to the output mix
