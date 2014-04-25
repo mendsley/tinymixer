@@ -64,7 +64,9 @@ struct SourceFlags {
 	};
 };
 
+struct Buffer;
 struct Source;
+
 struct buffer_functions {
 	void (*on_destroy)(Buffer* buffer);
 
@@ -196,7 +198,6 @@ static void resample_mono(float* out, int nout, const float* in, int qfreq) {
 }
 
 static void render(Source* source, float* buffer, const float gain[2]) {
-	const int nchannels = source->buffer->nchannels;
 
 	float* left = buffer;
 	float* right = buffer + c_nsamples;
@@ -225,13 +226,15 @@ static void render(Source* source, float* buffer, const float gain[2]) {
 
 			// resample source into scratch space
 			resample_mono(g_mixer.scratch, samples_written, srcleft, qfreq);
-			if (nchannels == 2) {
+			if (srcleft == srcright) {
+				srcleft = srcright = g_mixer.scratch;
+			} else {
+				// resample stereo channel
 				resample_mono(g_mixer.scratch + samples_written, samples_written, srcright, qfreq);
+				srcleft = g_mixer.scratch;
+				srcright = g_mixer.scratch + samples_written;
 			}
 
-			srcleft = srcright = g_mixer.scratch;
-			if (nchannels == 2)
-				srcright += samples_written;
 		} else {
 			samples_read = source->buffer->funcs->request_samples(source, &srcleft, &srcright, samples_read);
 			if (samples_read == 0) {
