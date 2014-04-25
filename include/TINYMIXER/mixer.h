@@ -39,8 +39,6 @@ void tinymixer_set_mastergain(float gain);
 
 void tinymixer_create_buffer_interleaved_s16le(int channels, const int16_t* pcm_data, int pcm_data_size, const tinymixer_buffer** handle);
 void tinymixer_create_buffer_interleaved_float(int channels, const float* pcm_data, int pcm_data_size, const tinymixer_buffer** handle);
-tinymixer_buffer* tinymixer_create_buffer(int channels, int nsamples);
-void tinymixer_buffer_getchannelbuffers(tinymixer_buffer* handle, float** channels);
 int tinymixer_get_buffer_size(const tinymixer_buffer* handle);
 void tinymixer_release_buffer(const tinymixer_buffer* handle);
 
