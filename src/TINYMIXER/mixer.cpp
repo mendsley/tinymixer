@@ -606,10 +606,7 @@ void tinymixer_add_loop(const tinymixer_buffer* handle, int gain_index, float ga
 
 void tinymixer_remove_loop(tinymixer_loop loop) {
 	Source* source = &g_mixer.sources[loop - 1];
-	source->flags &= ~SourceFlags::Looping;
-
-	// set the current position to the end of the source and let mixing loop cleanup the source
-	source->sample_pos = source->buffer->nsamples;
+	source->flags &= ~(SourceFlags::Playing | SourceFlags::Looping);
 }
 
 void tinymixer_loop_set_position(tinymixer_loop loop, const float* position) {
