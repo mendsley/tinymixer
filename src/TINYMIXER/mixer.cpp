@@ -253,13 +253,13 @@ static void render_effects(float* buffer) {
 			max_power = power;
 	}
 
-	float target_compressor_factor = c_quantize;
+	float target_compressor_factor = 1.0f;
 	if (max_power > g_mixer.compressor_thresholds[1])
 		target_compressor_factor = g_mixer.compressor_multipliers[1];
 	else if (max_power > g_mixer.compressor_thresholds[0])
 		target_compressor_factor = g_mixer.compressor_multipliers[0];
 
-	float attack_release = c_quantize;
+	float attack_release = 1.0f;
 	if (target_compressor_factor < compressor_factor)
 		attack_release = g_mixer.compressor_attack_per1ksamples;
 	else if (target_compressor_factor > compressor_factor)
@@ -645,7 +645,7 @@ void tinymixer_init(int sample_rate, tinymixer_callback callback) {
 	const float default_attack = 0.0f;
 	const float default_release = 0.0f;
 	tinymixer_effects_compressor(default_thresholds, default_multipliers, default_attack, default_release);
-	g_mixer.compressor_factor = c_quantize;
+	g_mixer.compressor_factor = 1.0f;
 	g_mixer.compressor_last_samples[0] = g_mixer.compressor_last_samples[1] = 0;
 }
 
