@@ -71,9 +71,15 @@ struct Buffer {
 	// float smaples[nsamples*nschannels];
 };
 
+struct static_source_data {
+	int32_t sample_pos;
+};
+
 struct Source {
 	const Buffer* buffer;
-	int32_t sample_pos;
+	union {
+		static_source_data static_source;
+	} instance_data;
 	float position[3];
 	float fadeout_per_sample;
 	float gain_base;
@@ -172,17 +178,19 @@ static void resample_mono(float* out, int nout, const float* in, int qfreq) {
 }
 
 static int source_requestsamples(Source* source, int nsamples, const float** left, const float** right) {
+	int sample_pos = source->instance_data.static_source.sample_pos;
+
 	// handle looping sources
-	if (source->sample_pos == source->buffer->nsamples) {
+	if (sample_pos == source->buffer->nsamples) {
 		if (source->flags & SourceFlags::Looping) {
-			source->sample_pos = 0;
+			sample_pos = 0;
 		} else {
 			return 0;
 		}
 	}
 
-	nsamples = mixer_min(source->buffer->nsamples - source->sample_pos, nsamples);
-	const float* srcleft = (float*)(source->buffer + 1) + source->sample_pos;
+	nsamples = mixer_min(source->buffer->nsamples - sample_pos, nsamples);
+	const float* srcleft = (float*)(source->buffer + 1) + sample_pos;
 
 	*left = srcleft;
 	if (source->buffer->nchannels == 1)
@@ -191,7 +199,7 @@ static int source_requestsamples(Source* source, int nsamples, const float** lef
 		*right = srcleft + source->buffer->nsamples;
 	}
 
-	source->sample_pos += nsamples;
+	source->instance_data.static_source.sample_pos += nsamples;
 	return nsamples;
 }
 
@@ -425,7 +433,7 @@ static Source* add(const tinymixer_buffer* handle, int gain_index, float gain) {
 
 	source->buffer = (const Buffer*)handle;
 	source->gain_base = gain;
-	source->sample_pos = 0;
+	source->instance_data.static_source.sample_pos = 0;
 	source->gain_base_index = (uint8_t)gain_index;
 	source->frame_age = 0;
 
