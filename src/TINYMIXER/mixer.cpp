@@ -168,6 +168,19 @@ static void resample_mono(int16_t* out, int nout, const int16_t* in, int qfreq) 
 	}
 }
 
+static int source_requestsamples(Source* source, int nsamples, const int16_t** left, const int16_t** right) {
+	nsamples = mixer_min(source->buffer->nsamples - source->sample_pos, nsamples);
+	const int16_t* srcleft = (int16_t*)(source->buffer + 1) + source->sample_pos;
+
+	*left = srcleft;
+	if (source->buffer->nchannels == 1)
+		*right = srcleft;
+	else
+		*right = srcleft + source->buffer->nsamples;
+
+	return nsamples;
+}
+
 static void render(Source* source, int32_t* buffer, const int qgain[2]) {
 	const bool looping = 0 != (source->flags & SourceFlags::Looping);
 	const int nchannels = source->buffer->nchannels;
@@ -186,21 +199,16 @@ static void render(Source* source, int32_t* buffer, const int qgain[2]) {
 			}
 		}
 
-		int samples_read = mixer_min(source->buffer->nsamples - source->sample_pos, remaining);
+		int samples_read = remaining;
 		int samples_written = samples_read;
 
-		const int16_t* srcleft  = (const int16_t*)(source->buffer + 1) + source->sample_pos;
-		const int16_t* srcright = srcleft;
-		if (nchannels == 2)
-			srcright += source->buffer->nsamples;
+		const int16_t* srcleft;
+		const int16_t* srcright;
 
 		// source has a non-1.0f frequency shift
 		if (source->flags & SourceFlags::Frequency) {
 			const int qfreq = (int)(source->frequency * c_quantize);
-			samples_read = mixer_min((samples_written * qfreq) / c_quantize, source->buffer->nsamples - source->sample_pos);
-
-			if (samples_read > c_nsamples)
-				samples_read = c_nsamples;
+			samples_read = source_requestsamples(source, mixer_min((samples_written * qfreq) / c_quantize, c_nsamples), &srcleft, &srcright);
 
 			samples_written = (samples_read * c_quantize) / qfreq;
 			if (samples_written == 0)
@@ -215,6 +223,8 @@ static void render(Source* source, int32_t* buffer, const int qgain[2]) {
 			srcleft = srcright = g_mixer.scratch;
 			if (nchannels == 2)
 				srcright += samples_written;
+		} else {
+			samples_read = source_requestsamples(source, samples_read, &srcleft, &srcright);
 		}
 
 		// render the source to the output mix
