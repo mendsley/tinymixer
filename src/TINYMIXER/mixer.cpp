@@ -459,6 +459,25 @@ void tinymixer_create_buffer_interleaved_float(int channels, const float* pcm_da
 	*handle = (tinymixer_buffer*)buffer;
 }
 
+tinymixer_buffer* tinymixer_create_buffer(int channels, int nsamples) {
+	Buffer* buffer = (Buffer*)tinymixer_alloc(sizeof(Buffer) + nsamples*channels*sizeof(float));
+	buffer->refcnt = 1;
+	buffer->nchannels = (uint8_t)channels;
+	buffer->nsamples = nsamples;
+
+	return (tinymixer_buffer*)buffer;
+}
+
+void tinymixer_buffer_getchannelbuffers(tinymixer_buffer* handle, float** channels) {
+	Buffer* buffer = (Buffer*)handle;
+
+	float* samples = (float*)(buffer + 1);
+	for (int ii = 0; ii < buffer->nchannels; ++ii) {
+		channels[ii] = samples;
+		samples += buffer->nsamples;
+	}
+}
+
 int tinymixer_get_buffer_size(const tinymixer_buffer* handle) {
 	const Buffer* buffer = (const Buffer*)handle;
 	return sizeof(Buffer)+sizeof(float)*buffer->nchannels*buffer->nsamples;
