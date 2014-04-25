@@ -328,6 +328,10 @@ static void mix(float* buffer) {
 				gain[ii][1] *= gain_distance * (1.0f + gain_panning * +c_speakerdist);
 			}
 		}
+
+		// clamp gains
+		gain[ii][0] = mixer_clamp(gain[ii][0], 0.0f, 1.0f);
+		gain[ii][1] = mixer_clamp(gain[ii][1], 0.0f, 1.0f);
 	}
 
 	tinymixer_memset(buffer, 0, sizeof(float)*2*c_nsamples);
