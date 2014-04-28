@@ -183,7 +183,7 @@ static void kill_source(Source* source) {
 
 static Source *find_source() {
 	Source* best_source = 0;
-	uint16_t best_age = 0xffff;
+	uint16_t best_age = 0;
 
 	for (int ii = 0; ii < c_nsources; ++ii) {
 		Source* source = &g_mixer.sources[ii];
@@ -192,7 +192,7 @@ static Source *find_source() {
 
 		if (0 == (source->flags & SourceFlags::Looping)) {
 			const uint16_t age = source->frame_age;
-			if (age < best_age) {
+			if (age >= best_age) {
 				best_source = source;
 				best_age = age;
 			}
