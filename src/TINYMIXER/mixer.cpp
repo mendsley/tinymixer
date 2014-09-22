@@ -421,7 +421,7 @@ void tinymixer_getsamples(float* samples, int nsamples) {
 	}
 
 	// Copy out samples
-	if (nsamples) {
+	while (nsamples) {
 		const int samples_to_mix = mixer_min(nsamples, c_nsamples);
 		mix(g_mixer.buffer);
 		g_mixer.samples_remaining = c_nsamples;
