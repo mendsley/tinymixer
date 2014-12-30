@@ -149,6 +149,8 @@ struct Mixer {
 }
 
 static const int c_quantize = 1024;
+static const float c_quantizeF = 1024.0f;
+static const float c_quantizeF_inv = 1.0f / c_quantizeF;
 static const int c_quantize_mask = (c_quantize - 1);
 static Mixer g_mixer;
 
@@ -207,12 +209,25 @@ static Source *find_source() {
 	return best_source;
 }
 
-static void resample_mono(float* out, int nout, const float* in, int qfreq) {
-	for (int qpos = 0; nout; --nout, qpos += qfreq) {
+static void resample_mono(float* out, int nout, const float* in, const int nIn, int qfreq) {
+	for (int qpos = 0; nout; --nout, qpos += qfreq)
+	{
 		const int qindex = qpos / c_quantize;
-		const int qinterp = qpos % c_quantize;
+		const int qinterp = qpos & c_quantize_mask;
 
-		*out++ = in[qindex] + (float)qinterp * (in[qindex + 1] - in[qindex]) / (float)c_quantize;
+		int next = (qpos + qfreq) / c_quantize;
+		if (next >= nIn)
+		{
+			next = nIn-1;
+		}
+		if (next == qindex)
+		{
+			*out++ = in[qindex];
+		}
+		else
+		{
+			*out++ = in[qindex] + (((float)qinterp) * c_quantizeF_inv) * (in[next] - in[qindex]);
+		}
 	}
 }
 
@@ -221,8 +236,10 @@ static void render(Source* source, float* buffer, const float gain[2]) {
 	float* left = buffer;
 	float* right = buffer + c_nsamples;
 
+	const int qfreq = (source->flags & SourceFlags::Frequency) ? (int)(source->frequency * c_quantizeF) : c_quantize;
+
 	int remaining = c_nsamples;
-	while (remaining) {
+	while (remaining > 0) {
 		int samples_read = remaining;
 		int samples_written = samples_read;
 
@@ -230,9 +247,24 @@ static void render(Source* source, float* buffer, const float gain[2]) {
 		const float* srcright;
 
 		// source has a non-1.0f frequency shift
-		if (source->flags & SourceFlags::Frequency) {
-			const int qfreq = (int)(source->frequency * c_quantize);
-			samples_read = source->buffer->funcs->request_samples(source, &srcleft, &srcright, mixer_min((samples_written * qfreq) / c_quantize, c_nsamples));
+		if (qfreq != c_quantize) {
+			if (qfreq < c_quantize)
+			{
+				// - expansion - read less samples
+				samples_read = (samples_read * qfreq) / c_quantize;
+				if (samples_read == 0)
+				{
+					// render the source to the output mix
+					float _left = left[-1];
+					float _right = right[-1];
+					for (int ii = 0; ii < remaining; ++ii)
+						*left++ += _left;
+					for (int ii = 0; ii < remaining; ++ii)
+						*right++ += _right;
+					return;
+				}
+			}
+			samples_read = source->buffer->funcs->request_samples(source, &srcleft, &srcright, samples_read);
 			if (samples_read == 0) {
 				// source is no longer playing
 				source->flags &= ~SourceFlags::Playing;
@@ -240,16 +272,24 @@ static void render(Source* source, float* buffer, const float gain[2]) {
 			}
 
 			samples_written = (samples_read * c_quantize) / qfreq;
-			if (samples_written == 0)
+			if (samples_written == 0 || remaining < 4)
+			{
+				// render the source to the output mix
+				for (int ii = 0; ii < remaining; ++ii)
+					*left++ += gain[0] * srcleft[mixer_min(ii,samples_read-1)];
+				for (int ii = 0; ii < remaining; ++ii)
+					*right++ += gain[1] * srcright[mixer_min(ii,samples_read-1)];
+
 				return;
+			}
 
 			// resample source into scratch space
-			resample_mono(g_mixer.scratch, samples_written, srcleft, qfreq);
+			resample_mono(g_mixer.scratch, samples_written, srcleft, samples_read, qfreq);
 			if (srcleft == srcright) {
 				srcleft = srcright = g_mixer.scratch;
 			} else {
 				// resample stereo channel
-				resample_mono(g_mixer.scratch + samples_written, samples_written, srcright, qfreq);
+				resample_mono(g_mixer.scratch + samples_written, samples_written, srcright, samples_read, qfreq);
 				srcleft = g_mixer.scratch;
 				srcright = g_mixer.scratch + samples_written;
 			}
@@ -847,8 +887,12 @@ void tinymixer_effects_compressor(const float thresholds[2], const float multipl
 	g_mixer.compressor_thresholds[1] = mixer_clamp(thresholds[1], 0.0f, 1.0f);
 	g_mixer.compressor_multipliers[0] = mixer_clamp(multipliers[0], 0.0f, 1.0f);
 	g_mixer.compressor_multipliers[1] = mixer_clamp(multipliers[1], 0.0f, 1.0f);
-	g_mixer.compressor_attack_per1ksamples = 1.0f / (attack_seconds * (float)g_mixer.sample_rate);
-	g_mixer.compressor_release_per1ksamples = 1.0f / (release_seconds * (float)g_mixer.sample_rate);
+
+    float attackSampleRate = (attack_seconds * (float)g_mixer.sample_rate);
+	g_mixer.compressor_attack_per1ksamples = (attackSampleRate > 0.0f) ? (1.0f / attackSampleRate) : 1.0f;
+
+    float releaseSampleRate = (release_seconds * (float)g_mixer.sample_rate);
+	g_mixer.compressor_release_per1ksamples = (releaseSampleRate > 0.0f) ? (1.0f / releaseSampleRate) : 1.0f;
 }
 
 void tinymixer_stop_all_sources() {
