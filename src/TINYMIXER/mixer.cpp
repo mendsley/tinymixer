@@ -62,6 +62,22 @@
 #define tinymixer_memcpy memcpy
 #endif
 
+#if !defined(tinymixer_addref)
+static inline void singlethread_addref(int32_t* v)
+{
+	++(*v);
+}
+#define tinymixer_addref singlethread_addref
+#endif
+
+#if !defined(tinymixer_decref)
+static inline int32_t singlethread_decref(int32_t* v)
+{
+	return --(*v);
+}
+#define tinymixer_decref singlethread_decref
+#endif
+
 namespace {
 struct SourceFlags {
 	enum Enum {
@@ -165,11 +181,11 @@ static inline float mixer_dist(const float* a, const float* b) {
 static inline void mixer_vcopy(float* v, const float* a) { v[0] = a[0], v[1] = a[1], v[2] = a[2]; }
 
 static void addref(Buffer* buffer) {
-	++buffer->refcnt;
+	tinymixer_addref(&buffer->refcnt);
 }
 
 static void decref(Buffer* buffer) {
-	if (0 == --buffer->refcnt) {
+	if (0 == tinymixer_decref(&buffer->refcnt)) {
 		buffer->funcs->on_destroy(buffer);
 		tinymixer_free(buffer);
 	}
