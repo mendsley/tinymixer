@@ -1,4 +1,4 @@
-tinymixer
+TinyMixer
 =========
 
 minimal audio mixer designed for game-like projects
