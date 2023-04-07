@@ -26,6 +26,7 @@
 
 #include <tinymixer/mixer.h>
 #include <atomic>
+#include <mutex>
 #include <math.h>
 #include <stdint.h>
 #include <stdlib.h>
@@ -100,6 +101,7 @@ static const float c_fnsamples = (float)c_nsamples;
 static float c_speakerdist = 0.17677669529663688110021109052621f; // 1/(4 *sqrtf(2))
 
 struct Mixer {
+	std::mutex lock;
 	tinymixer_callbacks callbacks;
 	float position[3];
 	float gain_master;
@@ -145,7 +147,11 @@ static void kill_source(Source* source) {
 	if (g_mixer.callbacks.channel_complete) {
 		tinymixer_channel channel;
 		channel.index = (int)(source - g_mixer.sources) + 1;
+
+		// unlock the mutex while in the user callback
+		g_mixer.lock.unlock();
 		g_mixer.callbacks.channel_complete(g_mixer.callbacks.opaque, source->opaque, channel);
+		g_mixer.lock.lock();
 	}
 
 	if (source->buffer) {
@@ -370,6 +376,8 @@ static void mix(float* buffer) {
 }
 
 void tinymixer_getsamples(float* samples, int nsamples) {
+	std::lock_guard<std::mutex> lock(g_mixer.lock);
+
 	// was data leftover after the previous call to getsamples? Copy that out here
 	while (nsamples && g_mixer.samples_remaining) {
 		const int samples_to_mix = mixer_min(nsamples, g_mixer.samples_remaining);
@@ -404,6 +412,7 @@ void tinymixer_getsamples(float* samples, int nsamples) {
 }
 
 void tinymixer_set_mastergain(float gain) {
+	std::lock_guard<std::mutex> lock(g_mixer.lock);
 	g_mixer.gain_master = gain;
 }
 
@@ -619,6 +628,7 @@ static buffer_functions vorbis_stream_buffer_funcs = {
 };
 
 void tinymixer_create_buffer_vorbis_stream(const void* data, int ndata, void* opaque, void (*closed)(void*), const tinymixer_buffer** handle) {
+	std::lock_guard<std::mutex> lock(g_mixer.lock);
 	VorbisStreamBuffer* buffer = (VorbisStreamBuffer*)g_mixer.callbacks.allocate(g_mixer.callbacks.opaque, sizeof(VorbisStreamBuffer) + ndata);
 	buffer->buffer.funcs = &vorbis_stream_buffer_funcs;
 	buffer->buffer.refcnt = 1;
@@ -632,15 +642,18 @@ void tinymixer_create_buffer_vorbis_stream(const void* data, int ndata, void* op
 }
 
 int tinymixer_get_buffer_size(const tinymixer_buffer* handle) {
+	std::lock_guard<std::mutex> lock(g_mixer.lock);
 	const Buffer* buffer = (const Buffer*)handle;
 	return buffer->funcs->get_buffer_size(buffer);
 }
 
 void tinymixer_release_buffer(const tinymixer_buffer* handle) {
+	std::lock_guard<std::mutex> lock(g_mixer.lock);
 	decref((Buffer*)handle);
 }
 
 bool tinymixer_add(const tinymixer_buffer* handle, int gain_index, float gain, float pitch, tinymixer_channel* channel) {
+	std::lock_guard<std::mutex> lock(g_mixer.lock);
 	Source* source = add(handle, gain_index, gain, pitch);
 	if (source) {
 		play(source);
@@ -652,6 +665,7 @@ bool tinymixer_add(const tinymixer_buffer* handle, int gain_index, float gain, f
 }
 
 bool tinymixer_add(const tinymixer_buffer* handle, int gain_index, float gain, float pitch, const float* position, float distance_min, float distance_max, tinymixer_channel* channel) {
+	std::lock_guard<std::mutex> lock(g_mixer.lock);
 	Source *source = add(handle, gain_index, gain, pitch);
 	if (source) {
 		mixer_vcopy(source->position, position);
@@ -680,6 +694,7 @@ static Source* add_loop(const tinymixer_buffer* handle, int gain_index, float ga
 }
 
 bool tinymixer_add_loop(const tinymixer_buffer* handle, int gain_index, float gain, float pitch, tinymixer_channel* channel) {
+	std::lock_guard<std::mutex> lock(g_mixer.lock);
 	Source* source = add_loop(handle, gain_index, gain, pitch, channel);
 	if (source)
 	{
@@ -692,6 +707,7 @@ bool tinymixer_add_loop(const tinymixer_buffer* handle, int gain_index, float ga
 }
 
 bool tinymixer_add_loop(const tinymixer_buffer* handle, int gain_index, float gain, float pitch, const float* position, float distance_min, float distance_max, tinymixer_channel* channel) {
+	std::lock_guard<std::mutex> lock(g_mixer.lock);
 	Source* source = add_loop(handle, gain_index, gain, pitch, channel);
 	if (source) {
 		mixer_vcopy(source->position, position);
@@ -708,38 +724,45 @@ bool tinymixer_add_loop(const tinymixer_buffer* handle, int gain_index, float ga
 }
 
 void tinymixer_channel_set_opaque(tinymixer_channel channel, void* opaque) {
+	std::lock_guard<std::mutex> lock(g_mixer.lock);
 	Source* source = &g_mixer.sources[channel.index - 1];
 	source->opaque = opaque;
 }
 
 void tinymixer_channel_stop(tinymixer_channel channel) {
+	std::lock_guard<std::mutex> lock(g_mixer.lock);
 	Source* source = &g_mixer.sources[channel.index - 1];
 	kill_source(source);
 }
 
 void tinymixer_channel_set_position(tinymixer_channel channel, const float* position) {
+	std::lock_guard<std::mutex> lock(g_mixer.lock);
 	Source* source = &g_mixer.sources[channel.index - 1];
 	mixer_vcopy(source->position, position);
 }
 
 void tinymixer_channel_fadeout(tinymixer_channel channel, float seconds) {
+	std::lock_guard<std::mutex> lock(g_mixer.lock);
 	Source* source = &g_mixer.sources[channel.index - 1];
 	source->fadeout_per_sample = 1.0f / (seconds * g_mixer.sample_rate);
 	source->flags |= SourceFlags::FadeOut;
 }
 
 void tinymixer_channel_set_gain(tinymixer_channel channel, float gain) {
+	std::lock_guard<std::mutex> lock(g_mixer.lock);
 	Source* source = &g_mixer.sources[channel.index - 1];
 	source->gain_base = gain;
 	source->flags &= ~SourceFlags::FadeOut;
 }
 
 float tinymixer_channel_get_gain(tinymixer_channel channel) {
+	std::lock_guard<std::mutex> lock(g_mixer.lock);
 	Source* source = &g_mixer.sources[channel.index - 1];
 	return source->gain_base;
 }
 
 void tinymixer_channel_set_frequency(tinymixer_channel channel, float frequency) {
+	std::lock_guard<std::mutex> lock(g_mixer.lock);
 	Source* source = &g_mixer.sources[channel.index - 1];
 
 	// clear frequency shift if ~0.0f
@@ -783,18 +806,22 @@ void tinymixer_init(tinymixer_callbacks callbacks, int sample_rate) {
 }
 
 void tinymixer_update_listener(const float* position) {
+	std::lock_guard<std::mutex> lock(g_mixer.lock);
 	mixer_vcopy(g_mixer.position, position);
 }
 
 void tinymixer_set_base_gain(int index, float gain) {
+	std::lock_guard<std::mutex> lock(g_mixer.lock);
 	g_mixer.gain_base[index] = gain;
 }
 
 void tinymixer_set_callback_gain(float gain) {
+	std::lock_guard<std::mutex> lock(g_mixer.lock);
 	g_mixer.gain_callback = gain;
 }
 
 void tinymixer_effects_compressor(const float thresholds[2], const float multipliers[2], float attack_seconds, float release_seconds) {
+	std::lock_guard<std::mutex> lock(g_mixer.lock);
 	g_mixer.compressor_thresholds[0] = mixer_clamp(thresholds[0], 0.0f, 1.0f);
 	g_mixer.compressor_thresholds[1] = mixer_clamp(thresholds[1], 0.0f, 1.0f);
 	g_mixer.compressor_multipliers[0] = mixer_clamp(multipliers[0], 0.0f, 1.0f);
@@ -808,6 +835,7 @@ void tinymixer_effects_compressor(const float thresholds[2], const float multipl
 }
 
 void tinymixer_stop_all_sources() {
+	std::lock_guard<std::mutex> lock(g_mixer.lock);
 	for (int ii = 0; ii < c_nsources; ++ii) {
 		Source* source = &g_mixer.sources[ii];
 		if (source->buffer) {
