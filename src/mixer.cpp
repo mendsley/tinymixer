@@ -934,3 +934,30 @@ void* tinymixer_vorbis_temp_malloc(size_t sz) {
 void tinymixer_vorbis_temp_free(void* ptr) {
 	tinymixer_vorbis_free(ptr);
 }
+
+void tinymixer_lowpass_filter_init(tinymixer_lowpass_filter* filter, float cutoff_frequency, float sample_rate) {
+	filter->cutoff_frequency = cutoff_frequency;
+	filter->sample_rate = sample_rate;
+
+	memset(filter->channel_history, 0, sizeof(filter->channel_history));
+}
+
+void tinymixer_lowpass_filter_apply(tinymixer_lowpass_filter* filter, float* output, float* input, int num_samples, int num_channels) {
+
+	float yk[2] = {
+		  filter->channel_history[0]
+		, filter->channel_history[1]
+	};
+
+	const float alpha = filter->cutoff_frequency / filter->sample_rate;
+
+	for (int ii = 0; ii != num_samples; ++ii) {
+		for (int channel = 0; channel != num_channels; ++channel) {
+			yk[channel] += alpha * (input[ii*num_channels + channel] - yk[channel]);
+			output[ii*num_channels + channel] = yk[channel];
+		}
+	}
+
+	filter->channel_history[0] = yk[0];
+	filter->channel_history[1] = yk[1];
+}

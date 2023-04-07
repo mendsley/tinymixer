@@ -110,4 +110,15 @@ int tinymixer_resampler_calculate_output_samples(const tinymixer_resampler* resa
 void tinymixer_resample_stereo(tinymixer_resampler* resampler, const float* input, int num_input_samples, float* output, int num_output_samples);
 void tinymixer_resample_mono(tinymixer_resampler* resampler, const float* input, int num_input_samples, float* output, int num_output_samples);
 
+struct tinymixer_lowpass_filter
+{
+	float cutoff_frequency; // 1250.0 is a decent starting point
+	float sample_rate;
+
+	float channel_history[2];
+};
+
+void tinymixer_lowpass_filter_init(tinymixer_lowpass_filter* filter, float cutoff_frequency, float sample_rate);
+void tinymixer_lowpass_filter_apply(tinymixer_lowpass_filter* filter, float* output, float* input, int num_samples, int num_channels);
+
 #endif
