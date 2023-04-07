@@ -29,6 +29,9 @@
 
 #include <stdint.h>
 
+struct tinymixer_buffer;
+struct tinymixer_channel;
+
 struct tinymixer_callbacks
 {
 	// user context. tinymixer will not modify or interpret this value. It is
@@ -42,10 +45,10 @@ struct tinymixer_callbacks
 	// allow the client to add additional audio into the mix before applying
 	// the effects pass
 	void (*pre_effects)(void* opaque, float* samples, int nsamples, float gain) = nullptr;
-};
 
-struct tinymixer_buffer;
-struct tinymixer_channel;
+	// called when a channel stops playing
+	void (*channel_complete)(void* opaque, void* channel_opaque, tinymixer_channel channel) = nullptr;
+};
 
 void tinymixer_init(tinymixer_callbacks callbacks, int sample_rate);
 void tinymixer_getsamples(float* samples, int nsamples);
@@ -76,6 +79,7 @@ bool tinymixer_add_loop(const tinymixer_buffer* handle, int gain_index, float ga
 bool tinymixer_add_loop(const tinymixer_buffer* handle, int gain_index, float gain, float pitch
 		, const float* position, float distance_min, float distance_max, tinymixer_channel* channel);
 
+void tinymixer_channel_set_opaque(tinymixer_channel channel, void* opaque);
 void tinymixer_channel_stop(tinymixer_channel channel);
 void tinymixer_channel_set_position(tinymixer_channel channel, const float* position);
 void tinymixer_channel_fadeout(tinymixer_channel channel, float seconds);

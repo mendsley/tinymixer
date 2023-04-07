@@ -105,6 +105,7 @@ struct Source {
 	uint8_t flags;
 	uint8_t gain_base_index;
 	tinymixer_resampler resampler;
+	void* opaque;
 };
 
 static const int c_ngaintypes = 8;
@@ -161,6 +162,12 @@ static void decref(Buffer* buffer) {
 }
 
 static void kill_source(Source* source) {
+
+	if (g_mixer.callbacks.channel_complete) {
+		tinymixer_channel channel;
+		channel.index = (int)(source - g_mixer.sources) + 1;
+		g_mixer.callbacks.channel_complete(g_mixer.callbacks.opaque, source->opaque, channel);
+	}
 
 	if (source->buffer) {
 		source->buffer->funcs->end_source(source);
@@ -743,6 +750,11 @@ bool tinymixer_add_loop(const tinymixer_buffer* handle, int gain_index, float ga
 	}
 
 	return false;
+}
+
+void tinymixer_channel_set_opaque(tinymixer_channel channel, void* opaque) {
+	Source* source = &g_mixer.sources[channel.index - 1];
+	source->opaque = opaque;
 }
 
 void tinymixer_channel_stop(tinymixer_channel channel) {
