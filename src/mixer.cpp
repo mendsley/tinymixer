@@ -34,12 +34,6 @@
 #include "vorbis.cpp"
 #undef STB_VORBIS_HEADER_ONLY
 
-#if !defined(tinymixer_free) || !defined(tinymixer_alloc)
-#include <stdlib.h>
-#define tinymixer_alloc malloc
-#define tinymixer_free free
-#endif
-
 #if !defined(tinymixer_addref)
 static inline void singlethread_addref(int32_t* v)
 {
@@ -161,7 +155,7 @@ static void addref(Buffer* buffer) {
 static void decref(Buffer* buffer) {
 	if (0 == tinymixer_decref(&buffer->refcnt)) {
 		buffer->funcs->on_destroy(buffer);
-		tinymixer_free(buffer);
+		g_mixer.callbacks.free(g_mixer.callbacks.opaque, buffer);
 	}
 }
 
@@ -555,7 +549,7 @@ static buffer_functions static_sample_functions = {
 void tinymixer_create_buffer_interleaved_s16le(int channels, const int16_t* pcm_data, int pcm_data_size, const tinymixer_buffer** handle) {
 	const int nsamples = pcm_data_size/sizeof(uint16_t)/channels;
 
-	StaticSampleBuffer* buffer = (StaticSampleBuffer*)tinymixer_alloc(sizeof(Buffer) + nsamples*channels*sizeof(float));
+	StaticSampleBuffer* buffer = (StaticSampleBuffer*)g_mixer.callbacks.allocate(g_mixer.callbacks.opaque, sizeof(Buffer) + nsamples*channels*sizeof(float));
 	buffer->buffer.funcs = &static_sample_functions;
 	buffer->buffer.refcnt = 1;
 	buffer->nchannels = (uint8_t)channels;
@@ -575,7 +569,7 @@ void tinymixer_create_buffer_interleaved_s16le(int channels, const int16_t* pcm_
 void tinymixer_create_buffer_interleaved_float(int channels, const float* pcm_data, int pcm_data_size, const tinymixer_buffer** handle) {
 	const int nsamples = pcm_data_size/sizeof(float)/channels;
 
-	StaticSampleBuffer* buffer = (StaticSampleBuffer*)tinymixer_alloc(sizeof(Buffer) + nsamples*channels*sizeof(float));
+	StaticSampleBuffer* buffer = (StaticSampleBuffer*)g_mixer.callbacks.allocate(g_mixer.callbacks.opaque, sizeof(Buffer) + nsamples*channels*sizeof(float));
 	buffer->buffer.funcs = &static_sample_functions;
 	buffer->buffer.refcnt = 1;
 	buffer->nchannels = (uint8_t)channels;
@@ -676,7 +670,7 @@ static buffer_functions vorbis_stream_buffer_funcs = {
 };
 
 void tinymixer_create_buffer_vorbis_stream(const void* data, int ndata, void* opaque, void (*closed)(void*), const tinymixer_buffer** handle) {
-	VorbisStreamBuffer* buffer = (VorbisStreamBuffer*)tinymixer_alloc(sizeof(VorbisStreamBuffer) + ndata);
+	VorbisStreamBuffer* buffer = (VorbisStreamBuffer*)g_mixer.callbacks.allocate(g_mixer.callbacks.opaque, sizeof(VorbisStreamBuffer) + ndata);
 	buffer->buffer.funcs = &vorbis_stream_buffer_funcs;
 	buffer->buffer.refcnt = 1;
 	buffer->opaque = opaque;
@@ -839,6 +833,18 @@ void tinymixer_loop_set_frequency(tinymixer_loop loop, float frequency) {
 }
 
 void tinymixer_init(tinymixer_callbacks callbacks, int sample_rate) {
+	// setup default callbacks where needed
+	if (!callbacks.allocate) {
+		callbacks.allocate = [](void* opaque, int bytes) {
+			return malloc(bytes);
+		};
+	}
+	if (!callbacks.free) {
+		callbacks.free = [](void* opaque, void* pointer) {
+			free(pointer);
+		};
+	}
+
 	g_mixer.gain_master = 1.0f;
 	for (int ii = 0; ii < c_ngaintypes; ++ii)
 		g_mixer.gain_base[ii] = 1.0f;
@@ -963,4 +969,20 @@ void tinymixer_resample_mono(tinymixer_resampler* resampler, const float* input,
 	output[0] = input[num_input_samples - 1];
 
 	resampler->prev_samples[0] = output[0];
+}
+
+void* tinymixer_vorbis_malloc(size_t sz) {
+	return g_mixer.callbacks.allocate(g_mixer.callbacks.opaque, (int)sz);
+}
+
+void tinymixer_vorbis_free(void* ptr) {
+	return g_mixer.callbacks.free(g_mixer.callbacks.opaque, ptr);
+}
+
+void* tinymixer_vorbis_temp_malloc(size_t sz) {
+	return tinymixer_vorbis_malloc((int)sz);
+}
+
+void tinymixer_vorbis_temp_free(void* ptr) {
+	tinymixer_vorbis_free(ptr);
 }

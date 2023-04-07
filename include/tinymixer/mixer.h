@@ -35,6 +35,10 @@ struct tinymixer_callbacks
 	// simply passed as-is to the callback functions
 	void* opaque = nullptr;
 
+	// allocate and free memory. If null, tinymixer will use malloc/free
+	void* (*allocate)(void* opaque, int bytes) = nullptr;
+	void  (*free)(void* opaque, void* pointer) = nullptr;
+
 	// allow the client to add additional audio into the mix before applying
 	// the effects pass
 	void (*pre_effects)(void* opaque, float* samples, int nsamples, float gain) = nullptr;
