@@ -119,16 +119,10 @@ struct Mixer {
 };
 }
 
-static const int c_quantize = 1024;
-static const float c_quantizeF = 1024.0f;
-static const float c_quantizeF_inv = 1.0f / c_quantizeF;
-static const int c_quantize_mask = (c_quantize - 1);
 static Mixer g_mixer;
 
 static inline float mixer_clamp(float v, float min, float max) { return min > v ? min : (v > max ? max : v); }
-static inline int32_t mixer_clamp(int32_t v, int32_t min, int32_t max) { return min > v ? min : (v > max ? max : v); }
 static inline int mixer_min(int a, int b) { return (a < b) ? a : b; }
-static inline int mixer_max(int a, int b) { return (b < a) ? a : b; }
 static inline float mixer_dist(const float* a, const float* b) {
 	const float distsq = (a[0] - b[0])*(a[0] - b[0]) + (a[1] - b[1])*(a[1] - b[1]) + (a[2] - b[2])*(a[2] - b[2]);
 	return sqrtf(distsq);
@@ -189,34 +183,10 @@ static Source *find_source() {
 	return best_source;
 }
 
-static void resample_mono(float* out, int nout, const float* in, const int nIn, int qfreq) {
-	for (int qpos = 0; nout; --nout, qpos += qfreq)
-	{
-		const int qindex = qpos / c_quantize;
-		const int qinterp = qpos & c_quantize_mask;
-
-		int next = (qpos + qfreq) / c_quantize;
-		if (next >= nIn)
-		{
-			next = nIn-1;
-		}
-		if (next == qindex)
-		{
-			*out++ = in[qindex];
-		}
-		else
-		{
-			*out++ = in[qindex] + (((float)qinterp) * c_quantizeF_inv) * (in[next] - in[qindex]);
-		}
-	}
-}
-
 static void render(Source* source, float* buffer, const float gain[2]) {
 
 	float* left = buffer;
 	float* right = buffer + c_nsamples;
-
-	const int qfreq = (source->flags & SourceFlags::Frequency) ? (int)(source->frequency * c_quantizeF) : c_quantize;
 
 	int remaining = c_nsamples;
 	while (remaining > 0) {
