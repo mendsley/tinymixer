@@ -30,9 +30,9 @@
 #include <stdlib.h>
 #include <string.h>
 
-#if TINYMIXER_SUPPORT_VORBIS_STREAM
-#include <tinymixer/vorbis.h>
-#endif
+#define STB_VORBIS_HEADER_ONLY
+#include "vorbis.cpp"
+#undef STB_VORBIS_HEADER_ONLY
 
 #if !defined(tinymixer_free) || !defined(tinymixer_alloc)
 #include <stdlib.h>
@@ -89,21 +89,17 @@ struct static_source_data {
 	int32_t sample_pos;
 };
 
-#if TINYMIXER_SUPPORT_VORBIS_STREAM
 struct vorbis_stream_data {
 	stb_vorbis* v;
 	const float* outputs[2];
 	int noutputs;
 };
-#endif
 
 struct Source {
 	const Buffer* buffer;
 	union {
 		static_source_data static_source;
-#if TINYMIXER_SUPPORT_VORBIS_STREAM
 		vorbis_stream_data vorbis_stream;
-#endif
 	} instance_data;
 	float position[3];
 	float fadeout_per_sample;
@@ -596,8 +592,6 @@ void tinymixer_create_buffer_interleaved_float(int channels, const float* pcm_da
 	*handle = (tinymixer_buffer*)buffer;
 }
 
-#if TINYMIXER_SUPPORT_VORBIS_STREAM
-
 namespace {
 struct VorbisStreamBuffer {
 	Buffer buffer;
@@ -693,8 +687,6 @@ void tinymixer_create_buffer_vorbis_stream(const void* data, int ndata, void* op
 	memcpy(buffer + 1, data, ndata);
 	*handle = (tinymixer_buffer*)buffer;
 }
-
-#endif
 
 int tinymixer_get_buffer_size(const tinymixer_buffer* handle) {
 	const Buffer* buffer = (const Buffer*)handle;
