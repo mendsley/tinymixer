@@ -889,3 +889,78 @@ void tinymixer_stop_all_sources() {
 		}
 	}
 }
+
+void tinymixer_resampler_init(tinymixer_resampler* resampler, int input_sample_rate, int output_sample_rate) {
+	const float ideal_rate = (float)input_sample_rate / (float)output_sample_rate;
+	tinymixer_resampler_init_rate(resampler, ideal_rate);
+}
+
+void tinymixer_resampler_init_rate(tinymixer_resampler* resampler, float ideal_rate) {
+	resampler->ideal_rate = ideal_rate;
+	resampler->prev_samples[0] = 0.0f;
+	resampler->prev_samples[1] = 0.0f;
+}
+
+int tinymixer_resampler_calcuate_input_samples(const tinymixer_resampler* resampler, int output_samples) {
+	const float input_samples = ceilf(resampler->ideal_rate * (float)output_samples);
+	return (int)input_samples;
+}
+
+int tinymixer_resampler_calculate_output_sampler(const tinymixer_resampler* resampler, int input_samples) {
+	const float output_samples = ceilf((float)input_samples / resampler->ideal_rate);
+	return (int)output_samples;
+}
+
+void tinymixer_resample_stereo(tinymixer_resampler* resampler, const float* input, int num_input_samples, float* output, int num_output_samples) {
+	float* output_end = output + (2 * num_output_samples) - 2;
+
+	float pos = resampler->ideal_rate;
+	while (pos < 1.0f) {
+		output[0] = resampler->prev_samples[0] + pos * (input[0] - resampler->prev_samples[0]);
+		output[1] = resampler->prev_samples[1] + pos * (input[1] - resampler->prev_samples[1]);
+
+		output += 2;
+		pos += resampler->ideal_rate;
+	}
+
+	while (output < output_end) {
+		const float pos_floor = floorf(pos);
+		const int index = 2 * (int)pos_floor;
+		output[0] = input[index - 2] + (input[index + 0] - input[index - 2]) * (pos - pos_floor);
+		output[1] = input[index - 1] + (input[index + 1] - input[index - 1]) * (pos - pos_floor);
+
+		output += 2;
+		pos += resampler->ideal_rate;
+	}
+
+	output[0] = input[2 * num_input_samples - 2];
+	output[1] = input[2 * num_input_samples - 1];
+
+	resampler->prev_samples[0] = output[0];
+	resampler->prev_samples[1] = output[1];
+}
+
+void tinymixer_resample_mono(tinymixer_resampler* resampler, const float* input, int num_input_samples, float* output, int num_output_samples) {
+	float* output_end = output + num_output_samples - 1;
+
+	float pos = resampler->ideal_rate;
+	while (pos < 1.0f) {
+		output[0] = resampler->prev_samples[0] + pos * (input[0] - resampler->prev_samples[0]);
+
+		++output;
+		pos += resampler->ideal_rate;
+	}
+
+	while (output < output_end) {
+		const float pos_floor = floorf(pos);
+		const int index = (int)pos_floor;
+		output[0] = input[index - 1] + (input[index] - input[index - 1]) * (pos - pos_floor);
+
+		++output;
+		pos += resampler->ideal_rate;
+	}
+
+	output[0] = input[num_input_samples - 1];
+
+	resampler->prev_samples[0] = output[0];
+}

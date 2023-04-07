@@ -63,4 +63,17 @@ void tinymixer_loop_set_frequency(tinymixer_loop loop, float frequency);
 float tinymixer_loop_get_gain(tinymixer_loop loop);
 void tinymixer_stop_all_sources();
 
+struct tinymixer_resampler
+{
+	float ideal_rate;
+	float prev_samples[2];
+};
+
+void tinymixer_resampler_init(tinymixer_resampler* resampler, int input_sample_rate, int output_sample_rate);
+void tinymixer_resampler_init_rate(tinymixer_resampler* resampler, float ideal_rate);
+int tinymixer_resampler_calcuate_input_samples(const tinymixer_resampler* resampler, int output_samples);
+int tinymixer_resampler_calculate_output_sampler(const tinymixer_resampler* resampler, int input_samples);
+void tinymixer_resample_stereo(tinymixer_resampler* resampler, const float* input, int num_input_samples, float* output, int num_output_samples);
+void tinymixer_resample_mono(tinymixer_resampler* resampler, const float* input, int num_input_samples, float* output, int num_output_samples);
+
 #endif
