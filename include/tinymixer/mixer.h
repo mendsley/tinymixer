@@ -45,37 +45,53 @@ struct tinymixer_callbacks
 };
 
 struct tinymixer_buffer;
-typedef uint8_t tinymixer_loop;
+struct tinymixer_channel;
 
 void tinymixer_init(tinymixer_callbacks callbacks, int sample_rate);
 void tinymixer_getsamples(float* samples, int nsamples);
 void tinymixer_set_mastergain(float gain);
 
-void tinymixer_create_buffer_interleaved_s16le(int channels, const int16_t* pcm_data, int pcm_data_size, const tinymixer_buffer** handle);
-void tinymixer_create_buffer_interleaved_float(int channels, const float* pcm_data, int pcm_data_size, const tinymixer_buffer** handle);
-void tinymixer_create_buffer_vorbis_stream(const void* data, int ndata, void* opaque, void (*closed)(void*), const tinymixer_buffer** handle);
+void tinymixer_create_buffer_interleaved_s16le(int channels, const int16_t* pcm_data, int pcm_data_size
+		, const tinymixer_buffer** handle);
+void tinymixer_create_buffer_interleaved_float(int channels, const float* pcm_data, int pcm_data_size
+		, const tinymixer_buffer** handle);
+void tinymixer_create_buffer_vorbis_stream(const void* data, int ndata
+		, void* opaque, void (*closed)(void*), const tinymixer_buffer** handle);
 int tinymixer_get_buffer_size(const tinymixer_buffer* handle);
 void tinymixer_release_buffer(const tinymixer_buffer* handle);
 
 void tinymixer_update_listener(const float* position);
 void tinymixer_set_base_gain(int index, float gain);
 void tinymixer_set_callback_gain(float gain);
-void tinymixer_effects_compressor(const float thresholds[2], const float multipliers[2], float attack_seconds, float release_seconds);
+void tinymixer_effects_compressor(const float thresholds[2], const float multipliers[2]
+		, float attack_seconds, float release_seconds);
 
-void tinymixer_add(const tinymixer_buffer* handle, int gain_index, float gain, float pitch);
-void tinymixer_add(const tinymixer_buffer* handle, int gain_index, float gain, float pitch, const float* position, float distance_min, float distance_max);
+void tinymixer_add(const tinymixer_buffer* handle, int gain_index, float gain, float pitch
+		, tinymixer_channel* channel);
+void tinymixer_add(const tinymixer_buffer* handle, int gain_index, float gain, float pitch, const float* position
+		, float distance_min, float distance_max, tinymixer_channel* channel);
 
-void tinymixer_add_loop(const tinymixer_buffer* handle, int gain_index, float gain, float pitch, tinymixer_loop* loop);
-void tinymixer_add_loop(const tinymixer_buffer* handle, int gain_index, float gain, float pitch,
-		const float* position, float distance_min, float distance_max, tinymixer_loop* loop);
-void tinymixer_remove_loop(tinymixer_loop loop);
-void tinymixer_loop_set_position(tinymixer_loop loop, const float* position);
-void tinymixer_loop_fadeout(tinymixer_loop loop, float seconds);
-void tinymixer_loop_set_gain(tinymixer_loop loop, float gain);
-void tinymixer_loop_set_frequency(tinymixer_loop loop, float frequency);
+void tinymixer_add_loop(const tinymixer_buffer* handle, int gain_index, float gain, float pitch
+		, tinymixer_channel* channel);
+void tinymixer_add_loop(const tinymixer_buffer* handle, int gain_index, float gain, float pitch
+		, const float* position, float distance_min, float distance_max, tinymixer_channel* channel);
 
-float tinymixer_loop_get_gain(tinymixer_loop loop);
+void tinymixer_channel_stop(tinymixer_channel channel);
+void tinymixer_channel_set_position(tinymixer_channel channel, const float* position);
+void tinymixer_channel_fadeout(tinymixer_channel channel, float seconds);
+void tinymixer_channel_set_gain(tinymixer_channel channel, float gain);
+void tinymixer_channel_set_frequency(tinymixer_channel channel, float frequency);
+
+float tinymixer_channel_get_gain(tinymixer_channel channel);
 void tinymixer_stop_all_sources();
+
+struct tinymixer_channel
+{
+	int index = 0;
+};
+
+static inline bool tinymixer_channel_isvalid(tinymixer_channel channel) { return channel.index != 0; }
+static inline bool operator==(tinymixer_channel lhs, tinymixer_channel rhs) { return lhs.index == rhs.index; }
 
 struct tinymixer_resampler
 {

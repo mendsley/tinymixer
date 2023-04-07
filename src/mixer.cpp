@@ -691,7 +691,7 @@ void tinymixer_release_buffer(const tinymixer_buffer* handle) {
 	decref((Buffer*)handle);
 }
 
-void tinymixer_add(const tinymixer_buffer* handle, int gain_index, float gain, float pitch) {
+void tinymixer_add(const tinymixer_buffer* handle, int gain_index, float gain, float pitch, tinymixer_channel* channel) {
 	Source* source = add(handle, gain_index, gain);
 	if (source) {
 		if (pitch != 1.0f) {
@@ -708,10 +708,11 @@ void tinymixer_add(const tinymixer_buffer* handle, int gain_index, float gain, f
 			source->frequency = 1.0f;
 		}
 		play(source);
+		channel->index = (int)(source - g_mixer.sources) + 1;
 	}
 }
 
-void tinymixer_add(const tinymixer_buffer* handle, int gain_index, float gain, float pitch, const float* position, float distance_min, float distance_max) {
+void tinymixer_add(const tinymixer_buffer* handle, int gain_index, float gain, float pitch, const float* position, float distance_min, float distance_max, tinymixer_channel* channel) {
 	Source *source = add(handle, gain_index, gain);
 	if (source) {
 		if (pitch != 1.0f) {
@@ -732,23 +733,24 @@ void tinymixer_add(const tinymixer_buffer* handle, int gain_index, float gain, f
 		source->distance_min = distance_min;
 		source->distance_difference = (distance_max - distance_min);
 		play(source);
+		channel->index = (int)(source - g_mixer.sources) + 1;
 	}
 }
 
-static Source* add_loop(const tinymixer_buffer* handle, int gain_index, float gain, tinymixer_loop* loop) {
+static Source* add_loop(const tinymixer_buffer* handle, int gain_index, float gain, tinymixer_channel* channel) {
 	Source* source = add(handle, gain_index, gain);
 	if (!source) {
-		*loop = 0;
+		channel->index = 0;
 		return 0;
 	}
 
 	source->flags |= SourceFlags::Looping;
-	*loop = (tinymixer_loop)(source - g_mixer.sources) + 1;
+	channel->index = (int)(source - g_mixer.sources) + 1;
 	return source;
 }
 
-void tinymixer_add_loop(const tinymixer_buffer* handle, int gain_index, float gain, float pitch, tinymixer_loop* loop) {
-	Source* source = add_loop(handle, gain_index, gain, loop);
+void tinymixer_add_loop(const tinymixer_buffer* handle, int gain_index, float gain, float pitch, tinymixer_channel* channel) {
+	Source* source = add_loop(handle, gain_index, gain, channel);
 	if (source)
 	{
 		if (pitch != 1.0f) {
@@ -768,8 +770,8 @@ void tinymixer_add_loop(const tinymixer_buffer* handle, int gain_index, float ga
 	}
 }
 
-void tinymixer_add_loop(const tinymixer_buffer* handle, int gain_index, float gain, float pitch, const float* position, float distance_min, float distance_max, tinymixer_loop* loop) {
-	Source* source = add_loop(handle, gain_index, gain, loop);
+void tinymixer_add_loop(const tinymixer_buffer* handle, int gain_index, float gain, float pitch, const float* position, float distance_min, float distance_max, tinymixer_channel* channel) {
+	Source* source = add_loop(handle, gain_index, gain, channel);
 	if (source) {
 		mixer_vcopy(source->position, position);
 		source->flags |= SourceFlags::Positional;
@@ -792,35 +794,35 @@ void tinymixer_add_loop(const tinymixer_buffer* handle, int gain_index, float ga
 	}
 }
 
-void tinymixer_remove_loop(tinymixer_loop loop) {
-	Source* source = &g_mixer.sources[loop - 1];
-	source->flags &= ~(SourceFlags::Playing | SourceFlags::Looping);
+void tinymixer_channel_stop(tinymixer_channel channel) {
+	Source* source = &g_mixer.sources[channel.index - 1];
+	kill_source(source);
 }
 
-void tinymixer_loop_set_position(tinymixer_loop loop, const float* position) {
-	Source* source = &g_mixer.sources[loop - 1];
+void tinymixer_channel_set_position(tinymixer_channel channel, const float* position) {
+	Source* source = &g_mixer.sources[channel.index - 1];
 	mixer_vcopy(source->position, position);
 }
 
-void tinymixer_loop_fadeout(tinymixer_loop loop, float seconds) {
-	Source* source = &g_mixer.sources[loop - 1];
+void tinymixer_channel_fadeout(tinymixer_channel channel, float seconds) {
+	Source* source = &g_mixer.sources[channel.index - 1];
 	source->fadeout_per_sample = 1.0f / (seconds * g_mixer.sample_rate);
 	source->flags |= SourceFlags::FadeOut;
 }
 
-void tinymixer_loop_set_gain(tinymixer_loop loop, float gain) {
-	Source* source = &g_mixer.sources[loop - 1];
+void tinymixer_channel_set_gain(tinymixer_channel channel, float gain) {
+	Source* source = &g_mixer.sources[channel.index - 1];
 	source->gain_base = gain;
 	source->flags &= ~SourceFlags::FadeOut;
 }
 
-float tinymixer_loop_get_gain(tinymixer_loop loop) {
-	Source* source = &g_mixer.sources[loop - 1];
+float tinymixer_channel_get_gain(tinymixer_channel channel) {
+	Source* source = &g_mixer.sources[channel.index - 1];
 	return source->gain_base;
 }
 
-void tinymixer_loop_set_frequency(tinymixer_loop loop, float frequency) {
-	Source* source = &g_mixer.sources[loop - 1];
+void tinymixer_channel_set_frequency(tinymixer_channel channel, float frequency) {
+	Source* source = &g_mixer.sources[channel.index - 1];
 
 	// clear frequency shift if ~0.0f
 	const float diff = frequency - 1.0f;
