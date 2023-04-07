@@ -25,6 +25,7 @@
  */
 
 #include <tinymixer/mixer.h>
+#include <atomic>
 #include <math.h>
 #include <stdint.h>
 #include <stdlib.h>
@@ -33,22 +34,6 @@
 #define STB_VORBIS_HEADER_ONLY
 #include "vorbis.cpp"
 #undef STB_VORBIS_HEADER_ONLY
-
-#if !defined(tinymixer_addref)
-static inline void singlethread_addref(int32_t* v)
-{
-	++(*v);
-}
-#define tinymixer_addref singlethread_addref
-#endif
-
-#if !defined(tinymixer_decref)
-static inline int32_t singlethread_decref(int32_t* v)
-{
-	return --(*v);
-}
-#define tinymixer_decref singlethread_decref
-#endif
 
 namespace {
 struct SourceFlags {
@@ -76,7 +61,7 @@ struct buffer_functions {
 
 struct Buffer {
 	const buffer_functions *funcs;
-	int32_t refcnt;
+	std::atomic<int32_t> refcnt;
 };
 
 struct static_source_data {
@@ -151,11 +136,11 @@ static inline float mixer_dist(const float* a, const float* b) {
 static inline void mixer_vcopy(float* v, const float* a) { v[0] = a[0], v[1] = a[1], v[2] = a[2]; }
 
 static void addref(Buffer* buffer) {
-	tinymixer_addref(&buffer->refcnt);
+	++buffer->refcnt;
 }
 
 static void decref(Buffer* buffer) {
-	if (0 == tinymixer_decref(&buffer->refcnt)) {
+	if (1 == buffer->refcnt.fetch_sub(1)) {
 		buffer->funcs->on_destroy(buffer);
 		g_mixer.callbacks.free(g_mixer.callbacks.opaque, buffer);
 	}
