@@ -25,41 +25,19 @@
  */
 
 #include <tinymixer/mixer.h>
+#include <math.h>
 #include <stdint.h>
+#include <stdlib.h>
+#include <string.h>
 
 #if TINYMIXER_SUPPORT_VORBIS_STREAM
 #include <tinymixer/vorbis.h>
-#endif
-
-#ifndef tinymixer_sqrtf
-#include <math.h>
-#define tinymixer_sqrtf sqrtf
-#endif
-
-#ifndef tinymixer_abs
-#include <stdlib.h>
-#define tinymixer_abs abs
-#endif
-
-#ifndef tinymixer_fabs
-#include <math.h>
-#define tinymixer_fabs fabs
 #endif
 
 #if !defined(tinymixer_free) || !defined(tinymixer_alloc)
 #include <stdlib.h>
 #define tinymixer_alloc malloc
 #define tinymixer_free free
-#endif
-
-#if !defined(tinymixer_memset)
-#include <string.h>
-#define tinymixer_memset memset
-#endif
-
-#if !defined(tinymixer_memcpy)
-#include <string.h>
-#define tinymixer_memcpy memcpy
 #endif
 
 #if !defined(tinymixer_addref)
@@ -176,7 +154,7 @@ static inline int mixer_min(int a, int b) { return (a < b) ? a : b; }
 static inline int mixer_max(int a, int b) { return (b < a) ? a : b; }
 static inline float mixer_dist(const float* a, const float* b) {
 	const float distsq = (a[0] - b[0])*(a[0] - b[0]) + (a[1] - b[1])*(a[1] - b[1]) + (a[2] - b[2])*(a[2] - b[2]);
-	return tinymixer_sqrtf(distsq);
+	return sqrtf(distsq);
 }
 static inline void mixer_vcopy(float* v, const float* a) { v[0] = a[0], v[1] = a[1], v[2] = a[2]; }
 
@@ -336,7 +314,7 @@ static void render_effects(float* buffer) {
 	// get maximum absolute power level from the rendered buffer, and adjust the compressor factor
 	float max_power = 0;
 	for (int ii = 0; ii < c_nsamples; ++ii) {
-		const float power = tinymixer_fabs(buffer[ii]);
+		const float power = fabsf(buffer[ii]);
 		if (power > max_power)
 			max_power = power;
 	}
@@ -422,7 +400,7 @@ static void mix(float* buffer) {
 		gain[ii][1] = mixer_clamp(gain[ii][1], 0.0f, 1.0f);
 	}
 
-	tinymixer_memset(buffer, 0, sizeof(float)*2*c_nsamples);
+	memset(buffer, 0, sizeof(float)*2*c_nsamples);
 
 	// render playing sources
 	for (int ii = 0; ii < nplaying; ++ii) {
@@ -712,7 +690,7 @@ void tinymixer_create_buffer_vorbis_stream(const void* data, int ndata, void* op
 	buffer->ndata = ndata;
 
 	// copy vorbis data
-	tinymixer_memcpy(buffer + 1, data, ndata);
+	memcpy(buffer + 1, data, ndata);
 	*handle = (tinymixer_buffer*)buffer;
 }
 
