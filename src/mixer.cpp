@@ -160,9 +160,12 @@ static void decref(Buffer* buffer) {
 }
 
 static void kill_source(Source* source) {
-	source->buffer->funcs->end_source(source);
 
-	decref((Buffer*)source->buffer);
+	if (source->buffer) {
+		source->buffer->funcs->end_source(source);
+		decref((Buffer*)source->buffer);
+	}
+
 	source->buffer = 0;
 	source->flags = 0;
 }
