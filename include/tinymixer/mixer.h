@@ -29,11 +29,21 @@
 
 #include <stdint.h>
 
+struct tinymixer_callbacks
+{
+	// user context. tinymixer will not modify or interpret this value. It is
+	// simply passed as-is to the callback functions
+	void* opaque = nullptr;
+
+	// allow the client to add additional audio into the mix before applying
+	// the effects pass
+	void (*pre_effects)(void* opaque, float* samples, int nsamples, float gain) = nullptr;
+};
+
 struct tinymixer_buffer;
 typedef uint8_t tinymixer_loop;
-typedef void (*tinymixer_callback)(float* samples, int nsamples, float gain);
 
-void tinymixer_init(int sample_rate, tinymixer_callback callback);
+void tinymixer_init(tinymixer_callbacks callbacks, int sample_rate);
 void tinymixer_getsamples(float* samples, int nsamples);
 void tinymixer_set_mastergain(float gain);
 

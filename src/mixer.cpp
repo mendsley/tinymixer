@@ -119,7 +119,7 @@ static const float c_fnsamples = (float)c_nsamples;
 static float c_speakerdist = 0.17677669529663688110021109052621f; // 1/(4 *sqrtf(2))
 
 struct Mixer {
-	tinymixer_callback callback;
+	tinymixer_callbacks callbacks;
 	float position[3];
 	float gain_master;
 	float gain_base[c_ngaintypes];
@@ -405,8 +405,8 @@ static void mix(float* buffer) {
 	}
 
 	// allow application to apply a premixed track (such as music)
-	if (g_mixer.callback)
-		(g_mixer.callback)(buffer, c_nsamples, g_mixer.gain_callback);
+	if (g_mixer.callbacks.pre_effects)
+		(g_mixer.callbacks.pre_effects)(g_mixer.callbacks.opaque, buffer, c_nsamples, g_mixer.gain_callback);
 
 	// render effects
 	render_effects(buffer);
@@ -838,13 +838,13 @@ void tinymixer_loop_set_frequency(tinymixer_loop loop, float frequency) {
 	}
 }
 
-void tinymixer_init(int sample_rate, tinymixer_callback callback) {
+void tinymixer_init(tinymixer_callbacks callbacks, int sample_rate) {
 	g_mixer.gain_master = 1.0f;
 	for (int ii = 0; ii < c_ngaintypes; ++ii)
 		g_mixer.gain_base[ii] = 1.0f;
 
 	g_mixer.sample_rate = sample_rate;
-	g_mixer.callback = callback;
+	g_mixer.callbacks = callbacks;
 	g_mixer.samples_remaining = 0;
 
 	const float default_thresholds[2] = {1.0f, 1.0f};
