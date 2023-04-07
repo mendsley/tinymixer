@@ -101,8 +101,8 @@ struct tinymixer_resampler
 
 void tinymixer_resampler_init(tinymixer_resampler* resampler, int input_sample_rate, int output_sample_rate);
 void tinymixer_resampler_init_rate(tinymixer_resampler* resampler, float ideal_rate);
-int tinymixer_resampler_calcuate_input_samples(const tinymixer_resampler* resampler, int output_samples);
-int tinymixer_resampler_calculate_output_sampler(const tinymixer_resampler* resampler, int input_samples);
+int tinymixer_resampler_calculate_input_samples(const tinymixer_resampler* resampler, int output_samples);
+int tinymixer_resampler_calculate_output_samples(const tinymixer_resampler* resampler, int input_samples);
 void tinymixer_resample_stereo(tinymixer_resampler* resampler, const float* input, int num_input_samples, float* output, int num_output_samples);
 void tinymixer_resample_mono(tinymixer_resampler* resampler, const float* input, int num_input_samples, float* output, int num_output_samples);
 

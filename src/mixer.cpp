@@ -104,6 +104,7 @@ struct Source {
 	uint16_t frame_age;
 	uint8_t flags;
 	uint8_t gain_base_index;
+	tinymixer_resampler resampler;
 };
 
 static const int c_ngaintypes = 8;
@@ -234,23 +235,8 @@ static void render(Source* source, float* buffer, const float gain[2]) {
 		const float* srcright;
 
 		// source has a non-1.0f frequency shift
-		if (qfreq != c_quantize) {
-			if (qfreq < c_quantize)
-			{
-				// - expansion - read less samples
-				samples_read = (samples_read * qfreq) / c_quantize;
-				if (samples_read == 0)
-				{
-					// render the source to the output mix
-					float _left = left[-1];
-					float _right = right[-1];
-					for (int ii = 0; ii < remaining; ++ii)
-						*left++ += _left;
-					for (int ii = 0; ii < remaining; ++ii)
-						*right++ += _right;
-					return;
-				}
-			}
+		if (source->flags & SourceFlags::Frequency) {
+			samples_read = tinymixer_resampler_calculate_input_samples(&source->resampler, samples_read);
 			samples_read = source->buffer->funcs->request_samples(source, &srcleft, &srcright, samples_read);
 			if (samples_read == 0) {
 				// source is no longer playing
@@ -258,29 +244,19 @@ static void render(Source* source, float* buffer, const float gain[2]) {
 				return;
 			}
 
-			samples_written = (samples_read * c_quantize) / qfreq;
-			if (samples_written == 0 || remaining < 4)
-			{
-				// render the source to the output mix
-				for (int ii = 0; ii < remaining; ++ii)
-					*left++ += gain[0] * srcleft[mixer_min(ii,samples_read-1)];
-				for (int ii = 0; ii < remaining; ++ii)
-					*right++ += gain[1] * srcright[mixer_min(ii,samples_read-1)];
+			samples_written = tinymixer_resampler_calculate_output_samples(&source->resampler, samples_read);
+			tinymixer_resample_mono(&source->resampler, srcleft, samples_read, g_mixer.scratch, samples_written);
 
-				return;
-			}
-
-			// resample source into scratch space
-			resample_mono(g_mixer.scratch, samples_written, srcleft, samples_read, qfreq);
 			if (srcleft == srcright) {
-				srcleft = srcright = g_mixer.scratch;
+				srcleft = g_mixer.scratch;
+				srcright = g_mixer.scratch;
 			} else {
-				// resample stereo channel
-				resample_mono(g_mixer.scratch + samples_written, samples_written, srcright, samples_read, qfreq);
+				// resmample the second streo channel
+				tinymixer_resample_mono(&source->resampler, srcright, samples_read, g_mixer.scratch + samples_written, samples_written);
+
 				srcleft = g_mixer.scratch;
 				srcright = g_mixer.scratch + samples_written;
 			}
-
 		} else {
 			samples_read = source->buffer->funcs->request_samples(source, &srcleft, &srcright, samples_read);
 			if (samples_read == 0) {
@@ -469,7 +445,7 @@ void tinymixer_set_mastergain(float gain) {
 	g_mixer.gain_master = gain;
 }
 
-static Source* add(const tinymixer_buffer* handle, int gain_index, float gain) {
+static Source* add(const tinymixer_buffer* handle, int gain_index, float gain, float pitch) {
 	Source* source = find_source();
 	if (!source)
 		return 0;
@@ -478,6 +454,14 @@ static Source* add(const tinymixer_buffer* handle, int gain_index, float gain) {
 	source->gain_base = gain;
 	source->gain_base_index = (uint8_t)gain_index;
 	source->frame_age = 0;
+
+	const float diff = pitch - 1.0f;
+	if (diff*diff < 1.0e-8f) {
+		source->flags &= ~SourceFlags::Frequency;
+	} else {
+		source->flags |= SourceFlags::Frequency;
+		tinymixer_resampler_init_rate(&source->resampler, pitch);
+	}
 
 	source->buffer->funcs->start_source(source);
 
@@ -695,21 +679,8 @@ void tinymixer_release_buffer(const tinymixer_buffer* handle) {
 }
 
 bool tinymixer_add(const tinymixer_buffer* handle, int gain_index, float gain, float pitch, tinymixer_channel* channel) {
-	Source* source = add(handle, gain_index, gain);
+	Source* source = add(handle, gain_index, gain, pitch);
 	if (source) {
-		if (pitch != 1.0f) {
-			// clear frequency shift if ~0.0f
-			const float diff = pitch - 1.0f;
-			if (diff*diff < 1.0e-8f) {
-				source->flags &= ~SourceFlags::Frequency;
-			} else {
-				source->frequency = pitch;
-				source->flags |= SourceFlags::Frequency;
-			}
-		} else {
-			source->flags &= ~SourceFlags::Frequency;
-			source->frequency = 1.0f;
-		}
 		play(source);
 		channel->index = (int)(source - g_mixer.sources) + 1;
 		return true;
@@ -719,21 +690,8 @@ bool tinymixer_add(const tinymixer_buffer* handle, int gain_index, float gain, f
 }
 
 bool tinymixer_add(const tinymixer_buffer* handle, int gain_index, float gain, float pitch, const float* position, float distance_min, float distance_max, tinymixer_channel* channel) {
-	Source *source = add(handle, gain_index, gain);
+	Source *source = add(handle, gain_index, gain, pitch);
 	if (source) {
-		if (pitch != 1.0f) {
-			// clear frequency shift if ~0.0f
-			const float diff = pitch - 1.0f;
-			if (diff*diff < 1.0e-8f) {
-				source->flags &= ~SourceFlags::Frequency;
-			} else {
-				source->frequency = pitch;
-				source->flags |= SourceFlags::Frequency;
-			}
-		} else {
-			source->flags &= ~SourceFlags::Frequency;
-			source->frequency = 1.0f;
-		}
 		mixer_vcopy(source->position, position);
 		source->flags |= SourceFlags::Positional;
 		source->distance_min = distance_min;
@@ -747,8 +705,8 @@ bool tinymixer_add(const tinymixer_buffer* handle, int gain_index, float gain, f
 	return false;
 }
 
-static Source* add_loop(const tinymixer_buffer* handle, int gain_index, float gain, tinymixer_channel* channel) {
-	Source* source = add(handle, gain_index, gain);
+static Source* add_loop(const tinymixer_buffer* handle, int gain_index, float gain, float pitch, tinymixer_channel* channel) {
+	Source* source = add(handle, gain_index, gain, pitch);
 	if (!source) {
 		channel->index = 0;
 		return 0;
@@ -760,22 +718,9 @@ static Source* add_loop(const tinymixer_buffer* handle, int gain_index, float ga
 }
 
 bool tinymixer_add_loop(const tinymixer_buffer* handle, int gain_index, float gain, float pitch, tinymixer_channel* channel) {
-	Source* source = add_loop(handle, gain_index, gain, channel);
+	Source* source = add_loop(handle, gain_index, gain, pitch, channel);
 	if (source)
 	{
-		if (pitch != 1.0f) {
-			// clear frequency shift if ~0.0f
-			const float diff = pitch - 1.0f;
-			if (diff*diff < 1.0e-8f) {
-				source->flags &= ~SourceFlags::Frequency;
-			} else {
-				source->frequency = pitch;
-				source->flags |= SourceFlags::Frequency;
-			}
-		} else {
-			source->flags &= ~SourceFlags::Frequency;
-			source->frequency = 1.0f;
-		}
 		play(source);
 
 		return true;
@@ -785,25 +730,13 @@ bool tinymixer_add_loop(const tinymixer_buffer* handle, int gain_index, float ga
 }
 
 bool tinymixer_add_loop(const tinymixer_buffer* handle, int gain_index, float gain, float pitch, const float* position, float distance_min, float distance_max, tinymixer_channel* channel) {
-	Source* source = add_loop(handle, gain_index, gain, channel);
+	Source* source = add_loop(handle, gain_index, gain, pitch, channel);
 	if (source) {
 		mixer_vcopy(source->position, position);
 		source->flags |= SourceFlags::Positional;
 		source->distance_min = distance_min;
 		source->distance_difference = (distance_max - distance_min);
-		if (pitch != 1.0f) {
-			// clear frequency shift if ~0.0f
-			const float diff = pitch - 1.0f;
-			if (diff*diff < 1.0e-8f) {
-				source->flags &= ~SourceFlags::Frequency;
-			} else {
-				source->frequency = pitch;
-				source->flags |= SourceFlags::Frequency;
-			}
-		} else {
-			source->flags &= ~SourceFlags::Frequency;
-			source->frequency = 1.0f;
-		}
+
 		play(source);
 
 		return true;
@@ -847,8 +780,8 @@ void tinymixer_channel_set_frequency(tinymixer_channel channel, float frequency)
 	if (diff*diff < 1.0e-8f) {
 		source->flags &= ~SourceFlags::Frequency;
 	} else {
-		source->frequency = frequency;
 		source->flags |= SourceFlags::Frequency;
+		source->resampler.ideal_rate = frequency;
 	}
 }
 
@@ -927,12 +860,12 @@ void tinymixer_resampler_init_rate(tinymixer_resampler* resampler, float ideal_r
 	resampler->prev_samples[1] = 0.0f;
 }
 
-int tinymixer_resampler_calcuate_input_samples(const tinymixer_resampler* resampler, int output_samples) {
+int tinymixer_resampler_calculate_input_samples(const tinymixer_resampler* resampler, int output_samples) {
 	const float input_samples = ceilf(resampler->ideal_rate * (float)output_samples);
 	return (int)input_samples;
 }
 
-int tinymixer_resampler_calculate_output_sampler(const tinymixer_resampler* resampler, int input_samples) {
+int tinymixer_resampler_calculate_output_samples(const tinymixer_resampler* resampler, int input_samples) {
 	const float output_samples = ceilf((float)input_samples / resampler->ideal_rate);
 	return (int)output_samples;
 }
