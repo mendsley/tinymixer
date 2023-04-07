@@ -66,14 +66,14 @@ void tinymixer_set_callback_gain(float gain);
 void tinymixer_effects_compressor(const float thresholds[2], const float multipliers[2]
 		, float attack_seconds, float release_seconds);
 
-void tinymixer_add(const tinymixer_buffer* handle, int gain_index, float gain, float pitch
+bool tinymixer_add(const tinymixer_buffer* handle, int gain_index, float gain, float pitch
 		, tinymixer_channel* channel);
-void tinymixer_add(const tinymixer_buffer* handle, int gain_index, float gain, float pitch, const float* position
+bool tinymixer_add(const tinymixer_buffer* handle, int gain_index, float gain, float pitch, const float* position
 		, float distance_min, float distance_max, tinymixer_channel* channel);
 
-void tinymixer_add_loop(const tinymixer_buffer* handle, int gain_index, float gain, float pitch
+bool tinymixer_add_loop(const tinymixer_buffer* handle, int gain_index, float gain, float pitch
 		, tinymixer_channel* channel);
-void tinymixer_add_loop(const tinymixer_buffer* handle, int gain_index, float gain, float pitch
+bool tinymixer_add_loop(const tinymixer_buffer* handle, int gain_index, float gain, float pitch
 		, const float* position, float distance_min, float distance_max, tinymixer_channel* channel);
 
 void tinymixer_channel_stop(tinymixer_channel channel);
