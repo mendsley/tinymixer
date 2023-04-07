@@ -24,11 +24,11 @@
  * POSSIBILITY OF SUCH DAMAGE.
  */
 
-#include <TINYMIXER/mixer.h>
+#include <tinymixer/mixer.h>
 #include <stdint.h>
 
 #if TINYMIXER_SUPPORT_VORBIS_STREAM
-#include <TINYVORBIS/vorbis.h>
+#include <tinymixer/vorbis.h>
 #endif
 
 #ifndef tinymixer_sqrtf
