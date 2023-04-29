@@ -487,7 +487,7 @@ static int static_sample_buffer_request_samples(Source* source, const float** le
 		*right = srcleft + buffer->nsamples;
 	}
 
-	source->instance_data.static_source.sample_pos += nsamples;
+	source->instance_data.static_source.sample_pos = sample_pos + nsamples;
 	return nsamples;
 }
 
