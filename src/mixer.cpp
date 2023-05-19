@@ -75,11 +75,16 @@ struct vorbis_stream_data {
 	int noutputs;
 };
 
+struct custom_stream_data {
+	void* opaque;
+};
+
 struct Source {
 	const Buffer* buffer;
 	union {
 		static_source_data static_source;
 		vorbis_stream_data vorbis_stream;
+		custom_stream_data custom_stream;
 	} instance_data;
 	float position[3];
 	float fadeout_per_sample;
@@ -638,6 +643,58 @@ void tinymixer_create_buffer_vorbis_stream(const void* data, int ndata, void* op
 
 	// copy vorbis data
 	memcpy(buffer + 1, data, ndata);
+	*handle = (tinymixer_buffer*)buffer;
+}
+
+namespace {
+struct CustomStreamBuffer {
+	Buffer buffer;
+	void* opaque;
+	tinymixer_buffer_callbacks callbacks;
+};
+}
+
+static void custom_stream_on_destroy(Buffer* buffer) {
+	CustomStreamBuffer* cbuffer = (CustomStreamBuffer*)buffer;
+	cbuffer->callbacks.on_destroy(cbuffer->opaque);
+}
+
+static void custom_stream_start_source(Source* source) {
+	CustomStreamBuffer* cbuffer = (CustomStreamBuffer*)source->buffer;
+	source->instance_data.custom_stream.opaque = cbuffer->callbacks.start_source(cbuffer->opaque);
+}
+
+static void custom_stream_end_source(Source* source) {
+	CustomStreamBuffer* cbuffer = (CustomStreamBuffer*)source->buffer;
+	cbuffer->callbacks.end_source(cbuffer->opaque, source->instance_data.custom_stream.opaque);
+}
+
+static int custom_stream_request_samples(Source* source, const float** left, const float** right, int nsamples) {
+	CustomStreamBuffer* cbuffer = (CustomStreamBuffer*)source->buffer;
+	return cbuffer->callbacks.request_samples(cbuffer->opaque, source->instance_data.custom_stream.opaque, left, right, nsamples);
+}
+
+static int custom_stream_get_buffer_size(const Buffer* buffer) {
+	return sizeof(CustomStreamBuffer);
+}
+
+static buffer_functions custom_stream_buffer_funcs = {
+	custom_stream_on_destroy,
+	custom_stream_start_source,
+	custom_stream_end_source,
+	custom_stream_request_samples,
+	custom_stream_get_buffer_size,
+};
+
+void tinymixer_create_buffer_custom_stream(void* opaque, tinymixer_buffer_callbacks callbacks, const tinymixer_buffer** handle) {
+	std::lock_guard<std::mutex> lock(g_mixer.lock);
+
+	CustomStreamBuffer* buffer = (CustomStreamBuffer*)g_mixer.callbacks.allocate(g_mixer.callbacks.opaque, sizeof(CustomStreamBuffer));
+	buffer->buffer.funcs = &custom_stream_buffer_funcs;
+	buffer->buffer.refcnt = 1;
+	buffer->opaque = opaque;
+	buffer->callbacks = callbacks;
+
 	*handle = (tinymixer_buffer*)buffer;
 }
 

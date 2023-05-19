@@ -50,6 +50,15 @@ struct tinymixer_callbacks
 	void (*channel_complete)(void* opaque, void* channel_opaque, tinymixer_channel channel) = nullptr;
 };
 
+struct tinymixer_buffer_callbacks
+{
+	void (*on_destroy)(void* buffer_opqaue);
+
+	void* (*start_source)(void* buffer_opaque);
+	void (*end_source)(void* buffer_opaque, void* source_opaque);
+	int (*request_samples)(void* buffer_opaque, void* source_opaque, const float** left, const float** right, int nsamples);
+};
+
 void tinymixer_init(tinymixer_callbacks callbacks, int sample_rate);
 void tinymixer_getsamples(float* samples, int nsamples);
 void tinymixer_set_mastergain(float gain);
@@ -60,6 +69,7 @@ void tinymixer_create_buffer_interleaved_float(int channels, const float* pcm_da
 		, const tinymixer_buffer** handle);
 void tinymixer_create_buffer_vorbis_stream(const void* data, int ndata
 		, void* opaque, void (*closed)(void*), const tinymixer_buffer** handle);
+void tinymixer_create_buffer_custom_stream(void* opaque, tinymixer_buffer_callbacks callbacks, const tinymixer_buffer** buffer);
 int tinymixer_get_buffer_size(const tinymixer_buffer* handle);
 void tinymixer_release_buffer(const tinymixer_buffer* handle);
 
